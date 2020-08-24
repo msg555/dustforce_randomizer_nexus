@@ -44,7 +44,7 @@ class script {
   bool first_frame;
   dictionary level_index;
 
-	array<int> added_entities;
+  array<int> added_entities;
 
   [hidden] string seed;
   [hidden] array<string> level_mapping;
@@ -116,50 +116,50 @@ class script {
     puts("real seed: " + sd);
     srand(sd);
 
-		array<uint> indexes;
-		level_mapping.resize(0);
+    array<uint> indexes;
+    level_mapping.resize(0);
     for (uint i = 0; i < LEVELS.size(); i++) {
-			indexes.insertLast(i);
-			level_mapping.insertLast("");
+      indexes.insertLast(i);
+      level_mapping.insertLast("");
     }
-		for (uint i = indexes.size(); i < CUSTOMS.size(); i++) {
-			if (rand() / 1073741823.0 > 1.0 * indexes.size() / (i + 1)) {
-				continue;
-			}
-			indexes[rand() % indexes.size()] = i;
-		}
+    for (uint i = indexes.size(); i < CUSTOMS.size(); i++) {
+      if (rand() / 1073741823.0 > 1.0 * indexes.size() / (i + 1)) {
+        continue;
+      }
+      indexes[rand() % indexes.size()] = i;
+    }
 
-		for (uint i = 0; i < indexes.size(); i++) {
-			for (uint j = i + 1; j < indexes.size(); j++) {
-				if (indexes[j] < indexes[i]) {
-					uint tmp = indexes[i];
-					indexes[i] = indexes[j];
-					indexes[j] = tmp;
-				}
-			}
-		}
+    for (uint i = 0; i < indexes.size(); i++) {
+      for (uint j = i + 1; j < indexes.size(); j++) {
+        if (indexes[j] < indexes[i]) {
+          uint tmp = indexes[i];
+          indexes[i] = indexes[j];
+          indexes[j] = tmp;
+        }
+      }
+    }
 
-		for (uint i = 0; i < LEVELS.size(); i += 16) {
-			array<uint> pos = {0, 0, 0, 0};
-			for (int j = 0; j < 16; j++) {
-				const level_data@ lvl = @CUSTOMS[indexes[i + j]];
+    for (uint i = 0; i < LEVELS.size(); i += 16) {
+      array<uint> pos = {0, 0, 0, 0};
+      for (int j = 0; j < 16; j++) {
+        const level_data@ lvl = @CUSTOMS[indexes[i + j]];
 
-				array<int> tset = {0, 1, 2, 3};
-				for (uint si = 0; ; si++) {
-					for (uint sj = si + 1; sj < 4; sj++) {
-						if (lvl.tiles[tset[si]] < lvl.tiles[tset[sj]]) {
-							uint tmp = tset[si];
-							tset[si] = tset[sj];
-							tset[sj] = tmp;
-						}
-					}
-					if (pos[tset[si]] < 4) {
-						level_mapping[16 * tset[si] + i / 4 + pos[tset[si]]++] = lvl.level;
-						break;
-					}
-				}
-			}
-		}
+        array<int> tset = {0, 1, 2, 3};
+        for (uint si = 0; ; si++) {
+          for (uint sj = si + 1; sj < 4; sj++) {
+            if (lvl.tiles[tset[si]] < lvl.tiles[tset[sj]]) {
+              uint tmp = tset[si];
+              tset[si] = tset[sj];
+              tset[sj] = tmp;
+            }
+          }
+          if (pos[tset[si]] < 4) {
+            level_mapping[16 * tset[si] + i / 4 + pos[tset[si]]++] = lvl.level;
+            break;
+          }
+        }
+      }
+    }
   }
 
   void on_level_start() {
@@ -191,34 +191,34 @@ class script {
     }
   }
 
-	void process_entity_load(entity@ e) {
-		uint ind = uint(level_index["" + e.id()]);
+  void process_entity_load(entity@ e) {
+    uint ind = uint(level_index["" + e.id()]);
 
-		// Verify the door is an OG door
-		if (e.type_name() != "level_door") {
-			return;
-		}
-		varstruct@ vars = @e.vars();
-		string og_level = vars.get_var("file_name").get_string();
-		for (uint i = 0; i < og_level.size(); i++) {
-			if (og_level[i] == 0x2D) {
-				return;
-			}
-		}
+    // Verify the door is an OG door
+    if (e.type_name() != "level_door") {
+      return;
+    }
+    varstruct@ vars = @e.vars();
+    string og_level = vars.get_var("file_name").get_string();
+    for (uint i = 0; i < og_level.size(); i++) {
+      if (og_level[i] == 0x2D) {
+        return;
+      }
+    }
 
-		entity@ e_new = create_entity("level_door");
-		e_new.x(e.x());
-		e_new.y(e.y());
-		e_new.layer(e.layer());
+    entity@ e_new = create_entity("level_door");
+    e_new.x(e.x());
+    e_new.y(e.y());
+    e_new.layer(e.layer());
 
-		varstruct@ vars_new = @e_new.vars();
-		vars_new.get_var("file_name").set_string(level_mapping[ind]);
-		vars_new.get_var("door_set").set_int32(
-			vars.get_var("door_set").get_int32()
-		);
-		
-		g.add_entity(@e_new);
-		g.remove_entity(@e);
+    varstruct@ vars_new = @e_new.vars();
+    vars_new.get_var("file_name").set_string(level_mapping[ind]);
+    vars_new.get_var("door_set").set_int32(
+      vars.get_var("door_set").get_int32()
+    );
+
+    g.add_entity(@e_new);
+    g.remove_entity(@e);
 
     if (authors.exists(level_mapping[ind])) {
       author_placard ap(string(authors[level_mapping[ind]]));
@@ -227,7 +227,7 @@ class script {
       e_placard.y(e.y());
       g.add_entity(@e_placard);
     }
-	}
+  }
 
   void editor_step() {
     seed = "";
@@ -326,22 +326,22 @@ class script {
   }
 
   void step_door_replacement() {
-		for (uint i = 0; i < added_entities.size(); i++) {
-			process_entity_load(entity_by_id(added_entities[i]));
-		}
-		added_entities.resize(0);
+    for (uint i = 0; i < added_entities.size(); i++) {
+      process_entity_load(entity_by_id(added_entities[i]));
+    }
+    added_entities.resize(0);
 
     if (!first_frame) {
       return;
     }
     first_frame = false;
 
-		for (uint i = 0; i < LEVELS.size(); i++) {
-			entity@ e = entity_by_id(LEVELS[i]);
-			if (@e != null) {
-				process_entity_load(@e);
-			}
-		}
+    for (uint i = 0; i < LEVELS.size(); i++) {
+      entity@ e = entity_by_id(LEVELS[i]);
+      if (@e != null) {
+        process_entity_load(@e);
+      }
+    }
   }
 
   void draw(float sub_frame) {
@@ -382,7 +382,7 @@ class script {
 
   void entity_on_add(entity@ e) {
     if (level_index.exists("" + e.id())) {
-			added_entities.insertLast(e.id());
+      added_entities.insertLast(e.id());
     }
   }
 };
@@ -406,25 +406,25 @@ class toggle_layer : trigger_base {
 
 class seed_display : trigger_base {
   scene@ g;
-	script@ s;
-	scripttrigger@ self;
+  script@ s;
+  scripttrigger@ self;
 
   textfield@ txt;
 
-	[text] int layer;
-	[text] int sub_layer;
-	[colour] uint colour;
+  [text] int layer;
+  [text] int sub_layer;
+  [colour] uint colour;
 
   bool check_ngplus;
   bool is_ngplus;
 
   seed_display() {
     @g = get_scene();
- 		@txt = create_textfield();
+     @txt = create_textfield();
 
-		layer = 20;
-		sub_layer = 3;
-		colour = 0xFFFFFFFF;
+    layer = 20;
+    sub_layer = 3;
+    colour = 0xFFFFFFFF;
 
     txt.colour(0xFFFFFFFF);
     txt.align_horizontal(0);
@@ -432,8 +432,8 @@ class seed_display : trigger_base {
   }
 
   void init(script@ s, scripttrigger@ self) {
-		@this.s = @s;
-		@this.self = @self;
+    @this.s = @s;
+    @this.self = @self;
   }
 
   void step() {
@@ -447,22 +447,22 @@ class seed_display : trigger_base {
   }
 
   void editor_draw(float) {
-		txt.colour(colour);
-		txt.text("0123456789");
-		txt.draw_world(layer, sub_layer, self.x(), self.y(), 0.8, 0.8, 0);
+    txt.colour(colour);
+    txt.text("0123456789");
+    txt.draw_world(layer, sub_layer, self.x(), self.y(), 0.8, 0.8, 0);
   }
 
-	void draw(float) {
-		txt.colour(colour);
-		txt.text(s.seed + (is_ngplus ? "*" : ""));
-		txt.draw_world(layer, sub_layer, self.x(), self.y(), 0.8, 0.8, 0);
-	}
+  void draw(float) {
+    txt.colour(colour);
+    txt.text(s.seed + (is_ngplus ? "*" : ""));
+    txt.draw_world(layer, sub_layer, self.x(), self.y(), 0.8, 0.8, 0);
+  }
 }
 
 class author_placard : trigger_base {
   scene@ g;
-	script@ s;
-	scripttrigger@ self;
+  script@ s;
+  scripttrigger@ self;
   canvas@ cvs;
 
   textfield@ txt;
@@ -477,21 +477,21 @@ class author_placard : trigger_base {
   }
 
   void init(script@ s, scripttrigger@ self) {
-		@this.s = @s;
-		@this.self = @self;
- 		@txt = create_textfield();
+    @this.s = @s;
+    @this.self = @self;
+     @txt = create_textfield();
     @cvs = create_canvas(false, 21, 22);
     txt.set_font("Caracteres", 36);
-		txt.text(author);
+    txt.text(author);
     txt.colour(0xFFFFFFFF);
     txt.align_horizontal(0);
     txt.align_vertical(0);
   }
 
-	void draw(float) {
+  void draw(float) {
     cvs.reset();
     cvs.translate(self.x(), 48 * round(self.y() / 48.0) + 10);
     cvs.scale(0.5, 0.5);
     cvs.draw_text(@txt, 0, 0, 1, 1, 0);
-	}
+  }
 }
