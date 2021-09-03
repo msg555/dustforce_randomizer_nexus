@@ -166,7 +166,7 @@ link</a>.</p>
                 data_out.getvalue(),
                 headers={
                     "Content-Type": "application/deflevel",
-                    "Content-Disposition": f"inline; filename=\"randomizer-{internal_seed_name}\"",
+                    "Content-Disposition": f"inline; filename=\"randomizer-{internal_seed_name}.dflevel\"",
                 },
             )
 
