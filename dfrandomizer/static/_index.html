@@ -1,0 +1,141 @@
+<html>
+<head>
+  <title>Randomizer Nexus</title>
+  <style>
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('static/ProximaNova-Reg.eot');
+  src: url('static/ProximaNova-Reg.eot?#iefix') format('embedded-opentype'),
+       url('static/ProximaNova-Reg.ttf') format('truetype'),
+       url('static/ProximaNova-Reg.svg#font') format('svg');
+}
+@font-face {
+  font-family: 'Caracteres L1';
+  src: url('static/Caracteres-L1.eot');
+  src: url('static/Caracteres-L1.eot?#iefix') format('embedded-opentype'),
+       url('static/Caracteres-L1.ttf') format('truetype'),
+       url('static/Caracteres-L1.svg#font') format('svg');
+}
+body {
+  background: #271A30;
+  color: #FFF;
+  font-family: 'Proxima Nova', Helvetica, Arial, sans-serif;
+}
+::-moz-selection {
+  background: #fe57a1;
+  color: #fff;
+  text-shadow: none;
+}
+::selection {
+  background: #fe57a1;
+  color: #fff;
+  text-shadow: none;
+}
+#kidbg {
+  background: url("static/kid.png") no-repeat;
+  background-position: top center;
+  background-attachment: fixed;
+  opacity: 0.05;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  position: fixed;
+  z-index: -1;
+}
+a:link {
+  color: #A4A4EE;
+}
+a:visited {
+  color: #D1A9F5;
+}
+.title {
+  font-family: 'Caracteres L1', Helvetica, Arial, sans-serif;
+  font-size: 64px;
+  position: absolute;
+  left: 220px;
+  top: 30px;
+}
+.titletext {
+  position: absolute;
+  left: 250px;
+  top: 100px;
+  font-size: 20pt;
+  white-space: pre;
+  z-index: 1;
+}
+.logo {
+  position: relative;
+  height: 160px;
+  min-width: 1200px;
+}
+.logo img {
+  height: 150px;
+  vertical-align: middle;
+}
+input, select {
+  float: left;
+}
+select {
+  margin: 2px;
+}
+fieldset p {
+  clear: both;
+  padding: 5px;
+}
+fieldset {
+  max-width: 900px;
+  margin-bottom: 20px;
+}
+label {
+  width: 250px;
+  float: left;
+}
+  </style>
+</head>
+<body>
+<div id="kidbg"></div>
+<div class='titletext'>Generate a nexus</div>
+<div class='title'>RANDOMIZER NEXUS</div>
+<div class="logo">
+<img class="mainkid" src="static/logo.png"/>
+</div>
+<div id="content">
+<form method='GET' action='generate-link'>
+<fieldset>
+  <legend>Nexus Generation Options</legend>
+  <p>
+    <label for='seed'>Seed</label>
+    <input type='text' name='seed' placeholder='auto-generate'></input>
+  </p>
+  <p>
+    <label for='levelset'>Level Set</label>
+    <select name='levelset'>
+      <option value='atlas'>Atlas</option>
+      <option value='atlas-no-cmp'>Atlas no CMP</option>
+      <option value='cmp'>CMP</option>
+      <option value='stock-64'>Main Hub Stock</option>
+      <option value='stock-75'>Stock</option>
+      <option value='stock-77'>Stock Extra</option>
+    </select>
+  </p>
+  <p>
+    <label for='hide-authors'>Hide Authors</label>
+    <input type='checkbox' name='hide-authors'/>
+  </p>
+  <p>
+    <label for='min-difficulty'>Minimum Difficulty</label>
+    <input type='range' min='0' max='10000' value='0' name='min-difficulty'/>
+  </p>
+  <p>
+    <label for='max-difficulty'>Maximum Difficulty</label>
+    <input type='range' min='0' max='10000' value='10000' name='max-difficulty'/>
+  </p>
+  <p>
+    <input type='submit' value='Generate'/>
+  </p>
+</fieldset>
+</form>
+</div>
+</body>
+</html>

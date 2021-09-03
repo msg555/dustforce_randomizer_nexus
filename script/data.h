@@ -1,29 +1,3 @@
-class level_data {
-  level_data() {
-  }
-
-  level_data(string level, int tile_forest, int tile_mansion, int tile_city,
-             int tile_lab, int tile_virtual, float difficulty) {
-    this.level = level;
-    this.tiles.insertLast(tile_forest);
-    this.tiles.insertLast(tile_mansion);
-    this.tiles.insertLast(tile_city);
-    this.tiles.insertLast(tile_lab);
-    this.tiles.insertLast(tile_virtual);
-    this.difficulty = difficulty;
-  }
-
-  string level;
-  array<int> tiles;
-  float difficulty;
-};
-
-/* Use customs_lite.h for faster compilation during development. */
-// #include "customs_lite.h"
-#include "customs.h"
-
-#include "authors.h"
-
 const array<int> LEVELS = {
   1627, // downhill
   1629, // shadedgrove

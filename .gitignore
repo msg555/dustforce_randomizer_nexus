@@ -1,1 +1,6 @@
-levels
+dataset
+*.pyc
+__pycache__
+.venv
+*.swp
+*.swo
