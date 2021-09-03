@@ -51,7 +51,7 @@ def randomize_stock(rng: random.Random, preserve_hub: bool, stock_more: bool, st
             levels[i] for i in derange(rng, len(levels))[:64]
         ]
 
-    gen_id = f"stock;{stock_all};{stock_more};{stock_preserve_hub}"
+    gen_id = f"stock;{stock_all};{stock_more};{preserve_hub}"
     return result, gen_id
 
 
