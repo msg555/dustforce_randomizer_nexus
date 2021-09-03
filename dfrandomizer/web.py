@@ -31,6 +31,19 @@ def parse_args():
         help="path to folder containing past datasets",
     )
     parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        required=False,
+        help="bind host",
+    )
+    parser.add_argument(
+        "--port",
+        default=5000,
+        type=int,
+        required=False,
+        help="bind port",
+    )
+    parser.add_argument(
         "--debug",
         action="store_const",
         const=True,
@@ -157,7 +170,7 @@ link</a>.</p>
                 },
             )
 
-    app.run(debug=cli_args.debug)
+    app.run(host=cli_args.host, port=cli_args.port, debug=cli_args.debug)
 
 
 if __name__ == "__main__":
