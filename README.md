@@ -1,41 +1,39 @@
-## Repository layout
-
-Utility scripts for filtering and computing level data for the Randomizer Nexus
-are in the root of this repository as Python scripts.
-
-The dustapi scripts that should be attached to the Randomizer Nexus is stored in
-the scripts/ directory.
-
-The actual Randomizer Nexus file is stored in bin/. This has some slight
-modifications to the "Nexus DX" file in addition to having the randomizer nexus
-script attached.
-
-## Modifiying the randomizer nexus script
-
-If you want to make modifications to the randomizer nexus script you'll likely
-want to change the include at the beginning of "data.h" to
-include "customs\_lite.h" as it is much faster to compile.
-
-Make sure that if you save the nexus file you do so while in editor mode. If you
-save while in play mode players will be unable to enter a new seed. If you
-accidentally make this mistake you can correct it by returning to editor mode
-and saving again.
-
-## Using the utility scripts
+### Install dependencies
 
 ```
-# Optionally recompute leveldata.json from dataset/solvers.json source data
-./playerrank.py > leveldata.json
+python -m pip install -r requirements.txt
+```
 
-# Output listing of door entity IDs to levels used in the LEVELS array in
-# "randomizer/data.h"
-./nexus_door_ids.py < bin/randomizer_nexus
+### Download datasets
 
-# Output the CUSTOMS array structure used in "randomizer/customs.h" listing
-# all the available levels and their metadata.
-./format_level_data.py < leveldata.json
+The randomizer makes use of a locally stored dataset. You can manage
+this dataset using the dfrandomizer.dataset module. The first time you
+run this will take awhile so grab a coffee, the downloaded data will
+be stored in the dataset/ folder. The script has been written in a way
+that interrupting it _should_ not lose much progress.
 
-# Output the AUTHORS dictionary structure used in "randomizer/authors.h"
-# mapping level IDs to author names.
-./format_authors.py < dataset/authors.json
+```
+# Can rerun including '--update-levels' to incorporate new levels into dataset
+python -m dfrandomizer.dataset --update-levels -v
+```
+
+### Generate a randomized nexus file
+
+You can generate a nexus from the command like using the
+`dfrandomizer.randomizer` module. Use `--help` to see a full listing of options.
+The below command will generate a randomized nexus at the path "my-nexus" based
+off the template nexus at "bin/randomizer\_nexus"
+
+```
+python -m dfrandomizer.randomizer --min-difficulty 0.5 bin/randomizer_nexus my-nexus
+```
+
+### Run web server
+
+The randomizer nexus also comes with a minimal flask web server to generate
+nexuses from a web interface. It is the intention that this service will
+be hosted and available at https://dustkid.com/randomizer.
+
+```
+python -m dfrandomizer.web bin/randomizer_nexus
 ```

@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import io
+import os
 import random
 import time
 import urllib.parse
@@ -24,6 +25,12 @@ def parse_args():
         help="path to dataset folder",
     )
     parser.add_argument(
+        "--old-datasets",
+        default=None,
+        required=False,
+        help="path to folder containing past datasets",
+    )
+    parser.add_argument(
         "--debug",
         action="store_const",
         const=True,
@@ -36,13 +43,41 @@ def main():
     app = Flask("dfrandomizer")
 
     cli_args = parse_args()
-    dataset = DatasetManager(cli_args.dataset)
-    dataset.load_levels()
-    dataset.load_ranks()
+
+    datasets = {}
+
+    def update_datasets():
+        datasets.clear()
+        if cli_args.old_datasets:
+            for ds_path in os.listdir(cli_args.old_datasets):
+                dataset = DatasetManager(os.path.join(cli_args.old_datasets, ds_path))
+                dataset.load_levels()
+                dataset.load_ranks()
+                datasets[dataset.rank_gen_time] = dataset
+
+        dataset = DatasetManager(cli_args.dataset)
+        dataset.load_levels()
+        dataset.load_ranks()
+        datasets[dataset.rank_gen_time] = dataset
+        return dataset.rank_gen_time
+
+    default_dataset = update_datasets()
 
     @app.route("/")
     def index():
         return app.send_static_file("_index.html")
+
+    last_update_time = time.time()
+
+    @app.route("/_update_datasets")
+    def update_datasets_view():
+        nonlocal last_update_time
+        nonlocal default_dataset
+        if time.time() - last_update_time < 60:
+            default_dataset = update_dataset()
+            last_update_time = time.time()
+            return "updated"
+        return "sleepy"
 
     @app.route("/generate-link")
     def generate_link():
@@ -55,6 +90,8 @@ def main():
             del args["min-difficulty"]
         if args.get("max-difficulty") == "10000" or args.get("levelset", "").startswith("stock-"):
             del args["max-difficulty"]
+        if cli_args.old_datasets and not args.get("dataset"):
+            args["dataset"] = str(default_dataset)
 
         target = "generate?" + urllib.parse.urlencode(args)
         return f"""
@@ -68,6 +105,10 @@ link</a>.</p>
     @app.route("/generate")
     def generate():
         args = dict(request.args)
+
+        dataset = datasets.get(args.get("dataset"))
+        if dataset is None:
+            dataset = datasets[default_dataset]
 
         min_difficulty = 0.0
         try:
