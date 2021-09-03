@@ -14,6 +14,7 @@ class script {
   [hidden] string full_seed_name;
   [hidden] array<string> level_mapping;
   [hidden] array<string> authors;
+  [hidden] array<string> level_names;
 
   script() {
     first_frame = true;
@@ -73,6 +74,7 @@ class script {
     vars_new.get_var("door_set").set_int32(
       vars.get_var("door_set").get_int32()
     );
+    vars_new.get_var("display_name").set_string(level_names[ind]);
 
     g.remove_entity(@e);
     g.add_entity(@e_new);
