@@ -6,7 +6,7 @@ import logging
 import os
 import tempfile
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import urllib
 
 from dustmaker.dfreader import DFReader
@@ -66,11 +66,12 @@ class DatasetManager:
         self.player_ranks: RankMapping = {}
         self.rank_gen_time = 0
 
-    def download_solvers(self, level_id: str) -> List[int]:
+    def download_solvers(self, level_id: str) -> Tuple[Optional[int], List[int]]:
         offset = 0
         count = 1024
 
         solvers = []
+        fastest_time = None
         while True:
             query_parameters = {
                 "level": level_id,
@@ -91,6 +92,8 @@ class DatasetManager:
             non_ss = False
             for score in scores_map.values():
                 if score["score_completion"] == 5 and score["score_finesse"] == 5:
+                    if fastest_time is None or score["time"] < fastest_time:
+                        fastest_time = score["time"]
                     solvers.append(score["user"])
                 else:
                     non_ss = True
@@ -99,7 +102,7 @@ class DatasetManager:
                 break
             offset += count
 
-        return solvers
+        return fastest_time, solvers
 
     def download_levels(self, *, prev: str = "", was_daily: Optional[bool] = None,
                         level_types: Optional[List[LevelType]] = None) -> LevelMetaMapping:
@@ -290,10 +293,12 @@ class DatasetManager:
                     continue
 
                 LOGGER.info("Calculating solvers for %s", level_id)
-                solvers[level_id] = self.download_solvers(level_id)
+                level_data["fastest_time"], solvers[level_id] = self.download_solvers(level_id)
                 updated_solvers = True
         finally:
             if updated_solvers:
+                with open_and_swap(os.path.join(self.dataset, "levels.json"), "w") as flevels:
+                    json.dump(self.levels, flevels)
                 with open_and_swap(os.path.join(self.dataset, "solvers.json"), "w") as fsolvers:
                     json.dump(solvers, fsolvers)
                 LOGGER.info("Updated solvers.json")
@@ -392,7 +397,7 @@ def main():
         help="force update extended level metadata",
     )
     parser.add_argument(
-        "--update_solvers",
+        "--update-solvers",
         action="store_const",
         const=True,
         default=False,

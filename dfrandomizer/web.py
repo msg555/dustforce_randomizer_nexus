@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import io
+import json
 import os
 import random
 import time
@@ -151,6 +152,19 @@ link</a>.</p>
             levels, gen_id = randomize_stock(rng, False, True, True)
         else:
             levels, gen_id = randomize_atlas(rng, dataset, min_difficulty, max_difficulty, False, False)
+
+        if "json" in args:
+            json_data = {
+                "levels": levels,
+                "seed": args.get("seed", ""),
+                "gen_id": gen_id,
+            }
+            return Response(
+                json.dumps(json_data),
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                }
+            )
 
         full_seed = f"{gen_id};{args.get('seed', '')}"
         with io.BytesIO() as data_out:
