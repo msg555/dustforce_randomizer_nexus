@@ -249,8 +249,8 @@ class DatasetManager:
         """
         levels_path = os.path.join(self.dataset, "levels.json")
         try:
-            with open(levels_path, "r") as fauthors:
-                self.levels = json.load(fauthors)
+            with open(levels_path, "r") as flevels:
+                self.levels = json.load(flevels)
             LOGGER.info("Read levels.json dataset")
         except FileNotFoundError:
             self.levels = {}
@@ -269,8 +269,8 @@ class DatasetManager:
                 if level in new_levels
             }
 
-            with open_and_swap(levels_path, "w") as fauthors:
-                json.dump(self.levels, fauthors)
+            with open_and_swap(levels_path, "w") as flevels:
+                json.dump(self.levels, flevels)
             LOGGER.info("Wrote levels.json dataset")
 
     def download_level_files(self) -> None:
