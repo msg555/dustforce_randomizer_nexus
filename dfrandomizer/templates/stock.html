@@ -1,0 +1,182 @@
+<h1 align='center'>Stock Randomizer</h1>
+<form method='POST' action='generate-link'>
+<input type='hidden' name='type' value='stock'/>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label title='Any random text used to "seed" all random decisions'>
+      Seed:
+      <input type='text' class='form-control' name='seed' placeholder='auto-generate'></input>
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label title='Nexus template used to create the randomizer'>
+      Template:
+      <select class='form-control' name='nexus-template'>
+{%- for template_name in nexus_templates %}
+        <option value='{{ template_name }}'>{{ template_name }}</option>
+{%- endfor %}
+      </select>
+    </label>
+  </div>
+</div>
+<h3 title='Levels must match at least one "Allow" constraint and no "Disallow"
+constraints to be included in the randomizer. If there are no "Allow"
+constraints all unset filters will be regarded as "Allow".'>Level Constraints</h3>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='Levels that were originally part of the nexus template'>
+      Builtin Levels
+      <select name='builtin-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y' selected>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='Includes all 75 stock levels plus old tutorial, dev clip, and
+infini'>
+      All Stock
+      <select name='stock-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='All 16 forest levels'>
+      Forest Levels
+      <select name='forest-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='All 16 mansion levels'>
+      Mansion Levels
+      <select name='mansion-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='All 16 city levels'>
+      City Levels
+      <select name='city-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='All 16 lab levels'>
+      Lab Levels
+      <select name='lab-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='All 3 new tutorial levels'>
+      Tutorials
+      <select name='tutorials-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='All 8 difficult levels'>
+      Difficults
+      <select name='difficults-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label>
+      Yotta Difficult
+      <select name='yotta-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label>
+      Old Tutorial
+      <select name='old-tutorial-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='The special "devclip" level used for promotions'>
+      Dev Clip
+      <select name='devclip-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label>
+      Infini Difficult
+      <select name='infini-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<h3>Output Options</h3>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label title='Select how door sprite and key types are generated'>
+      Doors
+      <select name='rand-doors' class='form-control'>
+        <option value='normal'>Normal</option>
+        <option value='random'>Randomized</option>
+        <option value='match'>Match Level (requires builtin levels only)</option>
+      </select>
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label>
+      <input name='hide-names' type='checkbox'/>
+      Hide Level Names
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-12'>
+    <button type='submit' class='btn btn-primary'>Generate</button>
+  </div>
+</div>
+</form>

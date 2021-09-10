@@ -1,5 +1,3 @@
-#include "data.h"
-
 const string DOOR_ENTITY = "level_door";
 
 class script {
@@ -10,24 +8,34 @@ class script {
   dictionary level_index;
   array<int> added_entities;
 
-  [hidden] string seed_name;
-  [hidden] string full_seed_name;
+  [hidden] array<int> door_ids;
   [hidden] array<string> level_mapping;
+  [hidden] array<int> door_sets;
+  [hidden] array<int> keys;
   [hidden] array<string> authors;
   [hidden] array<string> level_names;
 
   script() {
     first_frame = true;
-    for (uint i = 0; i < LEVELS.size(); i++) {
-      level_index["" + LEVELS[i]] = i;
-    }
-
     @g = get_scene();
     @n = get_nexus_api();
   }
 
   void on_level_start() {
+    init_data();
     fixup_scores();
+  }
+
+  void init_data() {
+    puts("door_ids: " + door_ids.size());
+    puts("levels: " + level_mapping.size());
+    puts("door_sets: " + door_sets.size());
+    puts("keys: " + keys.size());
+    puts("authors: " + authors.size());
+    puts("names: " + level_names.size());
+    for (uint i = 0; i < door_ids.size(); i++) {
+      level_index["" + door_ids[i]] = i;
+    }
   }
 
   void fixup_scores() {
@@ -39,7 +47,7 @@ class script {
       float time;
       int key_type;
       if (n.score_lookup(level, thorough, finesse, time, key_type)) {
-        int expected_key_type = (i % 16) / 4;
+        int expected_key_type = keys[i];
         if (expected_key_type == 0) {
           expected_key_type = 4;
         }
@@ -57,12 +65,6 @@ class script {
       return;
     }
 
-    varstruct@ vars = @e.vars();
-    string og_level = vars.get_var("file_name").get_string();
-    if (og_level != "") {
-      return;
-    }
-
     entity@ e_new = create_entity("level_door");
     e_new.x(e.x());
     e_new.y(e.y());
@@ -71,19 +73,19 @@ class script {
     varstruct@ vars_new = @e_new.vars();
     uint ind = uint(level_index["" + e.id()]);
     vars_new.get_var("file_name").set_string(level_mapping[ind]);
-    vars_new.get_var("door_set").set_int32(
-      vars.get_var("door_set").get_int32()
-    );
+    vars_new.get_var("door_set").set_int32(door_sets[ind]);
     vars_new.get_var("display_name").set_string(level_names[ind]);
 
     g.remove_entity(@e);
     g.add_entity(@e_new);
 
-    author_placard ap(authors[ind]);
-    entity@ e_placard = create_scripttrigger(@ap).as_entity();
-    e_placard.x(e.x());
-    e_placard.y(e.y());
-    g.add_entity(@e_placard);
+    if (authors[ind] != "") {
+      author_placard ap(authors[ind]);
+      entity@ e_placard = create_scripttrigger(@ap).as_entity();
+      e_placard.x(e.x());
+      e_placard.y(e.y());
+      g.add_entity(@e_placard);
+    }
   }
 
   void checkpoint_load() {
@@ -101,8 +103,8 @@ class script {
     }
     first_frame = false;
 
-    for (uint i = 0; i < LEVELS.size(); i++) {
-      entity@ e = entity_by_id(LEVELS[i]);
+    for (uint i = 0; i < door_ids.size(); i++) {
+      entity@ e = entity_by_id(door_ids[i]);
       if (@e != null) {
         process_entity_load(@e);
       }
@@ -115,78 +117,6 @@ class script {
     }
   }
 };
-
-class toggle_layer : trigger_base {
-  scene@ g;
-
-  [text] int layer;
-  [check] bool show;
-
-  toggle_layer() {
-    @g = get_scene();
-    layer = 18;
-    show = false;
-  }
-
-  void activate(controllable@ e) {
-    g.layer_visible(layer, show);
-  }
-}
-
-class seed_display : trigger_base {
-  scene@ g;
-  script@ s;
-  scripttrigger@ self;
-
-  textfield@ txt;
-
-  [text] int layer;
-  [text] int sub_layer;
-  [colour] uint colour;
-
-  bool check_ngplus;
-  bool is_ngplus;
-
-  seed_display() {
-    @g = get_scene();
-    @txt = create_textfield();
-
-    layer = 20;
-    sub_layer = 3;
-    colour = 0xFFFFFFFF;
-
-    txt.colour(0xFFFFFFFF);
-    txt.align_horizontal(0);
-    txt.align_vertical(0);
-  }
-
-  void init(script@ s, scripttrigger@ self) {
-    @this.s = @s;
-    @this.self = @self;
-  }
-
-  void step() {
-    if (check_ngplus) {
-      return;
-    }
-    check_ngplus = true;
-
-    int jnk;
-    s.n.get_keys_used(jnk, jnk, jnk, jnk, is_ngplus);
-  }
-
-  void editor_draw(float) {
-    txt.colour(colour);
-    txt.text("0123456789");
-    txt.draw_world(layer, sub_layer, self.x(), self.y(), 0.8, 0.8, 0);
-  }
-
-  void draw(float) {
-    txt.colour(colour);
-    txt.text(s.seed_name + (is_ngplus ? "*" : ""));
-    txt.draw_world(layer, sub_layer, self.x(), self.y(), 0.8, 0.8, 0);
-  }
-}
 
 class author_placard : trigger_base {
   scene@ g;

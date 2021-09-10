@@ -11,8 +11,6 @@ from sklearn.linear_model import LinearRegression
 LEVEL_ALPHA = 0.95
 PLAYER_ALPHA = 0.90
 
-MIN_PLAYER_THRESHOLD = 5
-
 REGRESSION_SIGMOID_MULT = 2.0
 REGRESSION_WEIGHTING = 0.4
 
@@ -65,13 +63,12 @@ def compute_ranks(levels, solvers):
     player_map = {}
     level_set = set()
     for level, players in solvers.items():
-        if len(players) >= MIN_PLAYER_THRESHOLD:
-            level_set.add(level)
-            for player in players:
-                player_map.setdefault(player, []).append(level)
+        level_set.add(level)
+        for player in players:
+            player_map.setdefault(player, []).append(level)
 
     def naive_difficulty(level):
-        ss_count = len(solvers[level])
+        ss_count = max(1, len(solvers[level]))
         expected_ss_count = float(max(1, expected_level_sses[level]))
 
         # sigmoid(ln(a) - ln(b))

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Dustmod
+Icon=/path/to/dustmod/Dustforce.png
+Exec=/path/to/dustmod/dustmod.bin.x86_64 %u
+Terminal=false
+MimeType=x-scheme-handler/dustforce;

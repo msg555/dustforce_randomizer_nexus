@@ -1,4 +1,4 @@
-LEVELS_STOCK = [
+LEVELS_STOCK = (
     "downhill", "shadedgrove", "dahlia", "fields",
     "momentum", "fireflyforest", "tunnels", "momentum2",
     "suntemple", "ascent", "summit", "grasscave",
@@ -23,10 +23,10 @@ LEVELS_STOCK = [
     "petadifficult", "exadifficult", "zettadifficult", "yottadifficult",
 
     "newtutorial1", "newtutorial2", "newtutorial3",
-    "tutorial0", "devclip",
-]
+    "tutorial0", "devclip", "exec func ruin user"
+)
 
-LEVELS_CMP = [
+LEVELS_CMP = (
     "4M00N-2041", "8pixelbit-hit-2057", "Abandoned-Core-2060",
     "Abandoned-Prison-1881", "Acropark-2-745", "Acropark-370",
     "Ashy-Beam-1733", "At-Sea-1838", "Awareness-2024",
@@ -64,4 +64,11 @@ LEVELS_CMP = [
     "Wilco-Revisited-2103", "Willows-1825", "Wolf-Chase--Updated-3207",
     "Wonderland-2038", "Wooxen-Ae-1813", "Wornscrape-983",
     "Ypsilon-Andromedae-2108",
-]
+)
+
+LEVEL_DOORS = (
+    5, 5, 5, 5, 23, 23, 23, 23, 10, 10, 10, 10, 11, 11, 11, 11,
+    1, 1, 1, 1, 22, 22, 22, 22, 2, 2, 2, 2, 3, 3, 3, 3,
+    13, 13, 13, 13, 24, 24, 24, 24, 14, 14, 14, 14, 15, 15, 15, 15,
+    17, 17, 17, 17, 25, 25, 25, 25, 18, 18, 18, 18, 19, 19, 19, 19,
+)

@@ -4,11 +4,13 @@ import collections
 import contextlib
 import logging
 import os
+import re
 import tempfile
 import time
 from typing import Dict, List, Optional, Tuple
 import urllib
 
+from dustmaker.entity import LevelDoor, CustomScoreBook
 from dustmaker.dfreader import DFReader
 from dustmaker.level import Level, LevelType
 
@@ -16,6 +18,7 @@ import json
 import requests
 
 from .playerrank import compute_ranks
+from .nexus_templates import preprocess_templates
 
 
 LOGGER = logging.getLogger(__name__)
@@ -114,9 +117,11 @@ class DatasetManager:
         if was_daily is not None:
             query_parameters["was_daily"] = was_daily
         if level_types is not None:
-            query_parameters["level_types"] = ",".join(
+            query_parameters["level_type"] = ",".join(
                 str(int(level_type)) for level_type in level_types
             )
+
+        print(query_parameters)
 
         result = {}
         while True:
@@ -139,6 +144,100 @@ class DatasetManager:
                 break
 
         return result
+
+    def load_community_levels(self, force_update: bool = False) -> None:
+        """ Find all levels accessible from the community nexus """
+        community_levels_path = os.path.join(self.dataset, "community.json")
+        if not force_update:
+            try:
+                with open(community_levels_path, "r") as flevs:
+                    self.community_levels = json.load(flevs)
+                LOGGER.info("Read community.json dataset")
+                return
+            except FileNotFoundError:
+                LOGGER.info("No existing community.json, computing")
+
+        try:
+            os.mkdir(os.path.join(self.dataset, "community_levels"))
+        except FileExistsError:
+            pass
+
+        visited = {
+            "random", "_back_", "_forward_", "", "Main Nexus", "Main Nexus DX",
+            "tutorial0", "citynexus", "forestnexus", "labnexus", "mansionnexus",
+            "Single Player Nexus", "randomizer_nexus",
+        }
+
+        def dfs(level, visited):
+            if level in self.levels:
+                # Level IDs in our levels struct are definitely normal
+                # levels, we don't need to open them.
+                return {}
+
+            atlas_match = re.match(".*-(\d+)", level)
+            atlas_id = 0
+            if atlas_match:
+                atlas_id = int(atlas_match.group(1))
+                path = self.download_atlas_level(atlas_id)
+            else:
+                path = self.download_community_level(level, force_update=force_update)
+            if not path:
+                return None
+
+            with DFReader(open(path, "rb")) as reader:
+                level_data, region_offsets = reader.read_level_ex()
+                if level_data.level_type in (LevelType.NORMAL, LevelType.DUSTMOD):
+                    self.levels[level] = {
+                        "name": level_data.name.decode(),
+                        "author": "",
+                        "atlas_id": atlas_id,
+                        "level_type": int(level_data.level_type),
+                        "was_daily": False,
+                    }
+                    return {}
+                if level_data.level_type != LevelType.NEXUS:
+                    return None
+
+                for _ in region_offsets[:-1]:
+                    reader.read_region(level_data)
+
+            LOGGER.info("Searching community level %s", level)
+            visited.add(level)
+
+            sub_levels = []
+            for _, _, entity in level_data.entities.values():
+                if not isinstance(entity, LevelDoor):
+                    continue
+                sub_levels.append(entity.file_name.decode())
+
+            for _, _, entity in level_data.entities.values():
+                if not isinstance(entity, CustomScoreBook):
+                    continue
+
+                _, _, stringlist_entity = level_data.entities[entity.level_list]
+                for ind, tome_level in enumerate(stringlist_entity.data):
+                    if ind > 1:
+                        sub_levels.append(tome_level.decode())
+
+            result = {}
+            for sub_level in sub_levels:
+                if sub_level in visited:
+                    continue
+                sub_result = dfs(sub_level, visited)
+                if sub_result is None:
+                    continue
+
+                result[sub_level] = sub_result
+
+            return result if result else None
+
+        self.community_levels = {
+            level: dfs(level, visited)
+            for level in ("customnexus", "Multiplayer Nexus")
+        }
+        with open_and_swap(community_levels_path, "w") as flevs:
+            json.dump(self.community_levels, flevs)
+        LOGGER.info("Wrote levels.json dataset")
 
     def load_levels(self, force_update: bool = False) -> None:
         """ Load level metadata into self.levels. By default this will just
@@ -187,32 +286,75 @@ class DatasetManager:
             atlas_id = levelinfo["atlas_id"]
             if not atlas_id:
                 continue
-            level_path = os.path.join(self.dataset, "levels", str(atlas_id))
-            if os.path.exists(level_path):
-                continue
+            self.download_atlas_level(atlas_id)
 
-            url = f"{self.atlas_root}/gi/downloader.php?id={atlas_id}"
-            LOGGER.info("Downloading level %s from %s", level, url)
+    def download_atlas_level(self, atlas_id: int) -> str:
+        """ Download a singular level from Atlas by its ID. """
+        level_path = os.path.join(self.dataset, "levels", str(atlas_id))
+        if os.path.exists(level_path):
+            return level_path
 
-            # Atlas sometimes generates 400s despite nothing being wrong with
-            # the request. We try to ignore those and just retry where possible.
-            MAX_ATTEMPTS = 3
-            for attempt in range(MAX_ATTEMPTS):
-                resp = self.sess.get(url, stream=True)
-                try:
-                    resp.raise_for_status()
-                except requests.exceptions.HTTPError:
-                    if attempt + 1 == MAX_ATTEMPTS:
-                        raise
-                    LOGGER.warning("request failed, pausing and then retrying")
-                    self.sess = requests.Session()
-                    time.sleep(1)
-                else:
-                    break
+        url = f"{self.atlas_root}/gi/downloader.php?id={atlas_id}"
+        LOGGER.info("Downloading atlas level ID %d from %s", atlas_id, url)
 
-            with open_and_swap(level_path, "wb") as fout:
-                for chunk in resp.iter_content(1024):
-                    fout.write(chunk)
+        # Atlas sometimes generates 400s despite nothing being wrong with
+        # the request. We try to ignore those and just retry where possible.
+        MAX_ATTEMPTS = 3
+        for attempt in range(MAX_ATTEMPTS):
+            resp = self.sess.get(url, stream=True)
+            try:
+                resp.raise_for_status()
+            except requests.exceptions.HTTPError:
+                if attempt + 1 == MAX_ATTEMPTS:
+                    raise
+                LOGGER.warning("request failed, pausing and then retrying")
+                self.sess = requests.Session()
+                time.sleep(1)
+            else:
+                break
+
+        with open_and_swap(level_path, "wb") as fout:
+            for chunk in resp.iter_content(1024):
+                fout.write(chunk)
+
+        return level_path
+
+    def download_community_level(self, level: int, force_update: bool = False) -> str:
+        """ Download a community level from Dustkid by name """
+        scrubbed_name = re.sub(r"[^\w-]", "", level)
+        level_path = os.path.join(self.dataset, "community_levels", scrubbed_name)
+        if not force_update and os.path.exists(level_path):
+            return level_path
+
+        url = "{}/backend8/level.php?{}".format(
+            self.dustkid_root,
+            urllib.parse.urlencode({"id": level}),
+        )
+        LOGGER.info("Downloading level %s from %s", level, url)
+
+        # Atlas sometimes generates 400s despite nothing being wrong with
+        # the request. We try to ignore those and just retry where possible.
+        MAX_ATTEMPTS = 3
+        for attempt in range(MAX_ATTEMPTS):
+            resp = self.sess.get(url, stream=True)
+            try:
+                if resp.status_code == 404:
+                    return ""
+                resp.raise_for_status()
+            except requests.exceptions.HTTPError:
+                if attempt + 1 == MAX_ATTEMPTS:
+                    raise
+                LOGGER.warning("request failed, pausing and then retrying")
+                self.sess = requests.Session()
+                time.sleep(1)
+            else:
+                break
+
+        with open_and_swap(level_path, "wb") as fout:
+            for chunk in resp.iter_content(1024):
+                fout.write(chunk)
+
+        return level_path
 
     def extend_level_metadata(self, force_update: bool = False) -> None:
         """ Add additional metadata from the level files to the self.levels
@@ -295,6 +437,13 @@ class DatasetManager:
                 LOGGER.info("Calculating solvers for %s", level_id)
                 level_data["fastest_time"], solvers[level_id] = self.download_solvers(level_id)
                 updated_solvers = True
+
+            orig_len = len(solvers)
+            solvers = {
+                level: solvers for level, solvers in solvers.items()
+                if level in self.levels
+            }
+            updated_solvers = updated_solvers or len(solvers) != orig_len
         finally:
             if updated_solvers:
                 with open_and_swap(os.path.join(self.dataset, "levels.json"), "w") as flevels:
@@ -305,26 +454,13 @@ class DatasetManager:
 
         self.solvers = solvers
 
-    def get_banned_levels(self) -> List[str]:
+    def load_banned_levels(self) -> List[str]:
         try:
             with open(os.path.join(self.dataset, "banned_levels.json"), "r") as fbanned:
-                banned_levels = json.load(fbanned)
+                self.banned_levels = set(json.load(fbanned))
         except FileNotFoundError:
-            banned_levels = []
+            self.banned_levels = {}
             LOGGER.info("Found no banned_levels.json file")
-        return banned_levels
-
-    def filter_banned_levels(self) -> None:
-        """ Filter out banned levels from levels and solvers """
-        banned_levels = self.get_banned_levels()
-
-        # Filter out banned and non-atlas levels
-        banned_levels.extend(
-            level for level, leveldata in self.levels.items() if not leveldata["atlas_id"]
-        )
-        for level in banned_levels:
-            self.levels.pop(level, None)
-            self.solvers.pop(level, None)
 
     def load_ranks(self) -> None:
         """ Load player/level rank data from disk into self.level_ranks and
@@ -381,12 +517,26 @@ def main():
         help="path to dataset folder",
     )
     parser.add_argument(
+        "--templates",
+        default="nexus_templates",
+        required=False,
+        help="path to nexus templates folder",
+    )
+    parser.add_argument(
         "--update-levels",
         action="store_const",
         const=True,
         default=False,
         required=False,
         help="force update level list and metadata",
+    )
+    parser.add_argument(
+        "--update-community",
+        action="store_const",
+        const=True,
+        default=False,
+        required=False,
+        help="force update list of community levels",
     )
     parser.add_argument(
         "--update-levels-full",
@@ -423,13 +573,13 @@ def main():
     )
 
     dataset = DatasetManager(args.dataset, dustkid_root=args.dustkid, atlas_root=args.atlas)
-
     dataset.load_levels(args.update_levels)
+    dataset.load_community_levels(args.update_community)
     dataset.download_level_files()
     dataset.extend_level_metadata(args.update_levels_full)
     dataset.load_solvers(args.update_solvers)
-    dataset.filter_banned_levels()
     dataset.compute_player_ranks()
+    preprocess_templates(args.templates)
 
 
 if __name__ == "__main__":

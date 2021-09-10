@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+    <mime-type type="application/dustforce-replay">
+        <comment>Dustforce Replay File</comment>
+        <acronym>DRF</acronym>
+        <expanded-acronym>Dustforce Replay File</expanded-acronym>
+        <sub-class-of type="application/octet-stream"/>
+        <generic-icon name="dustmod.desktop"/>
+        <magic priority="10">
+          <match value="DF_RPL" type="string" offset="0"/>
+        </magic>
+        <glob weight="10" pattern="*.dfreplay"/>
+    </mime-type>
+    <mime-type type="application/dustforce-level">
+        <comment>Dustforce Level File</comment>
+        <acronym>DLF</acronym>
+        <expanded-acronym>Dustforce Level File</expanded-acronym>
+        <sub-class-of type="application/octet-stream"/>
+        <generic-icon name="dustmod.desktop"/>
+        <magic priority="10">
+          <match value="DF_LVL" type="string" offset="0"/>
+        </magic>
+        <glob weight="10" pattern="*.dfreplay"/>
+    </mime-type>
+</mime-info>

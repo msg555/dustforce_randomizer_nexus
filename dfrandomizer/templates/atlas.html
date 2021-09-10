@@ -1,0 +1,240 @@
+<script type='text/javascript'>
+function update_difficulty(obj) {
+  mn = document.getElementById("min-difficulty");
+  mx = document.getElementById("max-difficulty");
+  if (parseInt(mx.value) < parseInt(mn.value)) {
+    console.info(mn.value + ", " + mx.value);
+    if (obj.id == "min-difficulty") {
+      mx.value = mn.value;
+    } else {
+      mn.value = mx.value;
+    }
+  }
+  mn.nextElementSibling.innerText = (mn.value / 10.0).toFixed(1) + " percentile";
+  mx.nextElementSibling.innerText = (mx.value / 10.0).toFixed(1) + " percentile";
+}
+</script>
+<h1 align='center'>Atlas Randomizer</h1>
+<form method='POST' action='generate-link'>
+<input type='hidden' name='type' value='atlas'/>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label title='Any random text used to "seed" all random decisions'>
+      Seed:
+      <input type='text' class='form-control' name='seed' placeholder='auto-generate'></input>
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label title='Nexus template used to create the randomizer'>
+      Template:
+      <select class='form-control' name='nexus-template'>
+{%- for template_name in nexus_templates %}
+        <option value='{{ template_name }}'>{{ template_name }}</option>
+{%- endfor %}
+      </select>
+    </label>
+  </div>
+</div>
+<h3 title='Levels must match at least one "Allow" constraint and no "Disallow"
+constraints to be included in the randomizer. If there are no "Allow"
+constraints all unset filters will be regarded as "Allow".'>Level Constraints</h3>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label>
+      Min SS Count:
+      <input type='text' class='form-control' name='min-ss' value='5'/>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label>
+      Max SS Count:
+      <input type='text' class='form-control' name='max-ss' placeholder='none'/>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='Minimum time in mm:ss.MMM format'>
+      Min SS Time:
+      <input type='text' class='form-control' name='min-time' placeholder='none'/>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='Maximum time in mm:ss.MMM format'>
+      Max SS Time:
+      <input type='text' class='form-control' name='max-time' value='3:00.000'/>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label>
+      Community Map Pack
+      <select name='cmp-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label>
+      Previous Dustkid Daily
+      <select name='daily-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='Any level reachable from the community nexus'>
+      Community Nexus
+      <select name='community-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label>
+      Has Apples
+      <select name='apple-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n'>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='Clockwise variants of stock levels'>
+      CW Stock Levels
+      <select name='cw-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='Counter-clockwise variants of stock levels'>
+      CCW Stock Levels
+      <select name='ccw-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-6 form-group'>
+    <label title='Clunky variants of stock levels'>
+      Clunky Stock Levels
+      <select name='clunky-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+  <div class='col-6 form-group'>
+    <label title='Backwards variants of stock levels'>
+      Backwards Stock Levels
+      <select name='backwards-filter' class='form-control'>
+        <option value=''>-</option>
+        <option value='y'>Allow</option>
+        <option value='n' selected>Disallow</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label title='Comma separated list of authors to pull levels from. If blank then no constraint is applied.'>
+      Required Authors:
+      <input name='required-authors' class='form-control' type='text' placeholder='author1,author2'/>
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label title='Comma separated list of authors to block from appearing in the randomizer'>
+      Blocked Authors:
+      <input name='blocked-authors' class='form-control' type='text' placeholder='author1,author2'/>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label title='Comma separated list of user IDs that must have SSed the level'>
+      SS user IDs: *
+      <input name='ss-users' class='form-control' type='text' placeholder='author1,author2'/>
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label title='Comma separated list of user IDs that must not have SSed the level'>
+      Not SS user IDs: *
+      <input name='no-ss-users' class='form-control' type='text' placeholder='author1,author2'/>
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label>
+      Minimum Difficulty
+      <input id='min-difficulty' type='range' class='form-control-range' min='0' max='1000' value='0' name='min-difficulty' oninput='update_difficulty(this)' />
+      <small>0.0 percentile</small>
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label>
+      Maximum Difficulty
+      <input id='max-difficulty' type='range' class='form-control-range' min='0' max='1000' value='1000' name='max-difficulty' oninput='update_difficulty(this)'/>
+      <small>100.0 percentile</small>
+    </label>
+  </div>
+</div>
+<h3>Output Options</h3>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label>
+      <input name='hide-authors' type='checkbox'/>
+      Hide Authors
+    </label>
+  </div>
+  <div class='form-group col-6'>
+    <label>
+      <input name='rand-doors' type='checkbox'/>
+      Randomize Door Types
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='form-group col-6'>
+    <label>
+      <input name='hide-names' type='checkbox'/>
+      Hide Level Names
+    </label>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-12'>
+    <button type='submit' class='btn btn-primary'>Generate</button>
+  </div>
+</div>
+<div class='row'>
+  <div class='col-12'>
+    <p><em>* Solver list updated only when dataset updated.</em></p>
+    <p>Dataset updated at: <span id='date-timestamp'>{{ dataset_gen_time // 1000000000 }}</span></p>
+  </div>
+</div>
+</form>
+<script type='text/javascript'>
+const date = new Date({{ dataset_gen_time // 1000000 }} );
+document.getElementById('date-timestamp').textContent = date.toLocaleString();
+console.info(date.toLocaleString());
+</script>
