@@ -245,11 +245,10 @@ def main():
         })
 
         target = "generate?" + urllib.parse.urlencode(new_args)
-        # <meta http-equiv="refresh" content="0;URL='{target}'" />
         return f"""
 <html><head><title>Randomizer Nexus</title>      
-</head><body><p>{str(new_args)}</p><p>{len(levels)} levels matching constraints. Download should begin automatically.</p>
-<p>Share this <a href="{target}">download link</a>.</p>
+</head><body><p>{len(levels)} levels matching constraints.</p>
+<p>Download/share this <a href="{target}">link</a>.</p>
 </body></html>
 """
 
