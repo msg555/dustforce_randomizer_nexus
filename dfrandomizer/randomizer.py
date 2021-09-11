@@ -289,10 +289,10 @@ def stock_filter(
     lab_filter: str = "",
     tutorials_filter: str = "",
     difficults_filter: str = "",
-    yotta_filter: str = "",
-    old_tutorial_filter: str = "",
-    devclip_filter: str = "",
-    infini_filter: str = "",
+    yotta_filter: str = "n",
+    old_tutorial_filter: str = "n",
+    devclip_filter: str = "n",
+    infini_filter: str = "n",
     **extra_args,
 ) -> List[str]:
     levels_builtin = {
