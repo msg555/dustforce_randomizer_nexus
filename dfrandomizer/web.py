@@ -1,23 +1,27 @@
-import argparse
+"""
+Flask web app definition around the randomizer
+"""
 import hashlib
 import io
 import json
 import os
 import random
 import time
+from typing import Dict
 import urllib.parse
 
-from flask import Flask, Response, request, redirect, render_template
+from flask import Flask, Response, request, render_template
 
 from .dataset import DatasetManager
-from .nexus_templates import load_all_templates
+from .nexus_templates import NexusTemplate, load_all_templates
 from .randomizer import (
-    atlas_filter,
+    atlas_filter_levels,
     atlas_randomize,
-    stock_filter,
+    stock_filter_levels,
     stock_randomize,
     write_level,
 )
+from .util import ArgumentParser
 
 
 DEFAULT_ARGS = {
@@ -59,12 +63,12 @@ DEFAULT_ARGS = {
         "infini-filter": "n",
         "rand-doors": "normal",
         "hide-names": "",
-    }
+    },
 }
 
 LEVEL_FILTERS = {
-    "atlas": atlas_filter,
-    "stock": stock_filter,
+    "atlas": atlas_filter_levels,
+    "stock": stock_filter_levels,
 }
 
 GENERATORS = {
@@ -73,8 +77,241 @@ GENERATORS = {
 }
 
 
+class FlaskRandomizer:
+    """Flask app wrapper for the randomizer"""
+
+    def __init__(
+        self,
+        dataset_path: str,
+        template_dir: str,
+        script_data: bytes,
+        *,
+        old_datasets_dir: str = "",
+    ) -> None:
+        self.dataset_path = dataset_path
+        self.template_dir = template_dir
+        self.script_data = script_data
+        self.old_datasets_dir = old_datasets_dir
+
+        self.app = Flask("dfrandomizer")
+        self.app.config["MAX_CONTENT_LENGTH"] = 10 * 2 ** 20
+        self.app.add_url_rule("/", view_func=self.atlas_view)
+        self.app.add_url_rule("/atlas", view_func=self.atlas_view)
+        self.app.add_url_rule("/stock", view_func=self.stock_view)
+        self.app.add_url_rule("/_update_datasets", view_func=self.update_datasets_view)
+        self.app.add_url_rule(
+            "/generate-link", view_func=self.generate_link_view, methods=["POST"]
+        )
+        self.app.add_url_rule("/generate", view_func=self.generate_view)
+
+        self.datasets: Dict[int, DatasetManager] = {}
+        self.nexus_templates: Dict[str, NexusTemplate] = {}
+        self.default_dataset_id = 0
+        self.last_update_time = time.time()
+        self.update_datasets()
+
+    def update_datasets(self) -> None:
+        """Update datasets used to generate nexuses. Also updates nexus template
+        information.
+        """
+        self.datasets.clear()
+        if self.old_datasets_dir:
+            for ds_path in os.listdir(self.old_datasets_dir):
+                dataset = DatasetManager(os.path.join(self.old_datasets_dir, ds_path))
+                dataset.load_levels()
+                dataset.load_solvers()
+                dataset.load_ranks()
+                dataset.load_community_levels()
+                dataset.load_banned_levels()
+                self.datasets[dataset.rank_gen_time] = dataset
+
+        dataset = DatasetManager(self.dataset_path)
+        dataset.load_levels()
+        dataset.load_solvers()
+        dataset.load_ranks()
+        dataset.load_community_levels()
+        dataset.load_banned_levels()
+        self.datasets[dataset.rank_gen_time] = dataset
+        self.default_dataset_id = dataset.rank_gen_time
+
+        self.nexus_templates.clear()
+        self.nexus_templates.update(load_all_templates(dataset, self.template_dir))
+
+    def atlas_view(self):
+        """Render the atlas randomizer UI"""
+        return render_template(
+            "index.html",
+            randomizer_type="atlas",
+            dataset_gen_time=self.default_dataset_id,
+            nexus_templates=self.nexus_templates,
+        )
+
+    def stock_view(self):
+        """Render the stock randomizer UI"""
+        return render_template(
+            "index.html",
+            randomizer_type="stock",
+            dataset_gen_time=self.default_dataset_id,
+            nexus_templates=self.nexus_templates,
+        )
+
+    def update_datasets_view(self):
+        """Backend URL to trigger an update of the datasets"""
+        if time.time() - self.last_update_time > 60:
+            self.update_datasets()
+            self.last_update_time = time.time()
+            return "updated"
+        return "sleepy"
+
+    def generate_link_view(self):
+        """Verify and report the number of available levels and yield a
+        permanent link if there are enough to create a randomizer.
+        """
+        args = dict(request.form)
+        seed = args.get("seed", "")
+        if not seed:
+            seed = hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:8]
+
+        default_args = DEFAULT_ARGS.get(args.get("type", ""))
+        if default_args is None:
+            return Response(
+                "invalid generate type",
+                status=400,
+            )
+
+        nexus_template = self.nexus_templates.get(args.pop("nexus-template", ""))
+        if nexus_template is None:
+            return Response(
+                "invalid nexus template",
+                status=400,
+            )
+
+        dataset = self.datasets.get(args.get("dataset-id"))
+        if dataset is None:
+            dataset = self.datasets[self.default_dataset_id]
+
+        new_args = {}
+        for key, default_val in default_args.items():
+            val = args.get(key, default_val)
+            if val != default_val:
+                new_args[key] = val
+
+        levels = LEVEL_FILTERS[args["type"]](
+            dataset,
+            nexus_template,
+            **{key.replace("-", "_"): val for key, val in new_args.items()},
+        )
+        if args["type"] != "custom" and len(levels) < len(nexus_template.level_doors):
+            return Response(
+                f"{len(levels)} matching levels, need {len(nexus_template.level_doors)}",
+                status=400,
+            )
+
+        new_args.update(
+            {
+                "type": args["type"],
+                "nexus-template": nexus_template.name,
+                "seed": seed,
+                "dataset-id": dataset.rank_gen_time,
+            }
+        )
+
+        target = "generate?" + urllib.parse.urlencode(new_args)
+        return f"""
+<html><head><title>Randomizer Nexus</title>      
+</head><body><p>{len(levels)} levels matching constraints.</p>
+<p>Download/share this <a href="{target}">link</a>.</p>
+</body></html>
+"""
+
+    def generate_view(self):
+        """Generate the requested randomizer nexus"""
+        args = dict(request.args)
+
+        try:
+            dataset_id = int(args.get("dataset-id"))
+        except ValueError:
+            return Response("invalid dataset", status=400)
+
+        dataset = self.datasets.get(dataset_id)
+        if dataset is None:
+            return Response("invalid dataset", status=400)
+
+        nexus_template = self.nexus_templates.get(args.pop("nexus-template", ""))
+        if nexus_template is None:
+            return Response(
+                "invalid nexus template",
+                status=400,
+            )
+
+        seed = args.get("seed", "")
+        rng = random.Random(seed)
+
+        generator = GENERATORS.get(args.get("type", ""))
+        if generator is None:
+            return Response("invalid generation type", status=400)
+
+        nexus_data = generator(
+            rng,
+            dataset,
+            nexus_template,
+            **{key.replace("-", "_"): val for key, val in args.items()},
+        )
+
+        randomizer_hash = hashlib.sha256(
+            json.dumps(nexus_data.as_json(), sort_keys=True).encode()
+        ).hexdigest()[:8]
+        json_data = {
+            "args": args,
+            "hash": randomizer_hash,
+            "template": {
+                "name": nexus_template.name,
+                "level_door_ids": [
+                    int(door_id) for door_id in nexus_template.level_doors
+                ],
+                "level_door_names": [
+                    nexus_template.data["doors"][door_id]["level"]
+                    for door_id in nexus_template.level_doors
+                ],
+            },
+            **nexus_data.as_json(),
+        }
+
+        if "json" in args:
+            return Response(
+                json.dumps(json_data, indent=2 if args["json"] == "pretty" else None),
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                },
+            )
+
+        with io.BytesIO() as data_out:
+            try:
+                write_level(
+                    dataset,
+                    nexus_template,
+                    self.script_data,
+                    data_out,
+                    nexus_data,
+                    **{key.replace("-", "_"): val for key, val in args.items()},
+                )
+            except ValueError:
+                return Response(
+                    "invalid arguments",
+                    status=400,
+                )
+            return Response(
+                data_out.getvalue(),
+                headers={
+                    "Content-Type": "application/deflevel",
+                    "Content-Disposition": f'inline; filename="randomizer-{randomizer_hash}.dflevel"',
+                },
+            )
+
+
 def parse_args():
-    parser = argparse.ArgumentParser("create randomized nexus")
+    """Parse CLI arguments"""
+    parser = ArgumentParser(description="create randomized nexus")
     parser.add_argument(
         "randomizer_script",
         help="Randomizer Angelscript to attach to nexuses",
@@ -119,217 +356,20 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    app = Flask("dfrandomizer")
-    app.config["MAX_CONTENT_LENGTH"] = 10 * 2**20
+def main() -> None:
+    """CLI entrypoint for the flask-based web server"""
+    args = parse_args()
 
-    cli_args = parse_args()
-
-    datasets = {}
-    nexus_templates = {}
-
-    with open(cli_args.randomizer_script, "rb") as fscript:
+    with open(args.randomizer_script, "rb") as fscript:
         script_data = fscript.read()
 
-    def update_datasets():
-        datasets.clear()
-        if cli_args.old_datasets:
-            for ds_path in os.listdir(cli_args.old_datasets):
-                dataset = DatasetManager(os.path.join(cli_args.old_datasets, ds_path))
-                dataset.load_levels()
-                dataset.load_solvers()
-                dataset.load_ranks()
-                dataset.load_community_levels()
-                dataset.load_banned_levels()
-                datasets[dataset.rank_gen_time] = dataset
-
-        dataset = DatasetManager(cli_args.dataset)
-        dataset.load_levels()
-        dataset.load_solvers()
-        dataset.load_ranks()
-        dataset.load_community_levels()
-        dataset.load_banned_levels()
-        datasets[dataset.rank_gen_time] = dataset
-        nexus_templates.clear()
-        nexus_templates.update(load_all_templates(dataset, cli_args.template_dir))
-        return dataset.rank_gen_time
-
-    default_dataset = update_datasets()
-
-    @app.route("/")
-    def index():
-        return render_template(
-            "index.html",
-            randomizer_type="atlas",
-            dataset_gen_time=default_dataset,
-            nexus_templates=nexus_templates,
-        )
-
-    @app.route("/atlas")
-    def atlas():
-        return render_template(
-            "index.html",
-            randomizer_type="atlas",
-            dataset_gen_time=default_dataset,
-            nexus_templates=nexus_templates,
-        )
-
-    @app.route("/stock")
-    def stock():
-        return render_template(
-            "index.html",
-            randomizer_type="stock",
-            dataset_gen_time=default_dataset,
-            nexus_templates=nexus_templates,
-        )
-
-    last_update_time = time.time()
-
-    @app.route("/_update_datasets")
-    def update_datasets_view():
-        nonlocal last_update_time
-        nonlocal default_dataset
-        if time.time() - last_update_time > 60:
-            default_dataset = update_datasets()
-            last_update_time = time.time()
-            return "updated"
-        return "sleepy"
-
-    @app.route("/generate-link", methods=['POST'])
-    def generate_link():
-        args = dict(request.form)
-        seed = args.get("seed", "")
-        if not seed:
-            seed = hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:8]
-
-        default_args = DEFAULT_ARGS.get(args.get("type", ""))
-        if default_args is None:
-            return Response(
-                "invalid generate type",
-                status=400,
-            )
-
-        nexus_template = nexus_templates.get(args.pop("nexus-template", ""))
-        if nexus_template is None:
-            return Response(
-                "invalid nexus template",
-                status=400,
-            )
-
-        dataset = datasets.get(args.get("dataset-id"))
-        if dataset is None:
-            dataset = datasets[default_dataset]
-
-        new_args = {}
-        for key, default_val in default_args.items():
-            val = args.get(key, default_val)
-            if val != default_val:
-                new_args[key] = val
-
-        levels = LEVEL_FILTERS[args["type"]](
-            dataset,
-            nexus_template,
-            **{key.replace("-", "_"): val for key, val in new_args.items()},
-        )
-        if args["type"] != "custom" and len(levels) < len(nexus_template.level_doors):
-            return Response(
-                f"{len(levels)} matching levels, need {len(nexus_template.level_doors)}",
-                status=400,
-            )
-
-        new_args.update({
-            "type": args["type"],
-            "nexus-template": nexus_template.name,
-            "seed": seed,
-            "dataset-id": dataset.rank_gen_time,
-        })
-
-        target = "generate?" + urllib.parse.urlencode(new_args)
-        return f"""
-<html><head><title>Randomizer Nexus</title>      
-</head><body><p>{len(levels)} levels matching constraints.</p>
-<p>Download/share this <a href="{target}">link</a>.</p>
-</body></html>
-"""
-
-    @app.route("/generate")
-    def generate():
-        args = dict(request.args)
-
-        try:
-            dataset_id = int(args.get("dataset-id"))
-        except ValueError:
-            return Response("invalid dataset", status=400)
-
-        dataset = datasets.get(dataset_id)
-        if dataset is None:
-            return Response("invalid dataset", status=400)
-
-        nexus_template = nexus_templates.get(args.pop("nexus-template", ""))
-        if nexus_template is None:
-            return Response(
-                "invalid nexus template",
-                status=400,
-            )
-
-        seed = args.get("seed", "")
-        rng = random.Random(seed)
-
-        generator = GENERATORS.get(args.get("type", ""))
-        if generator is None:
-            return Response("invalid generation type", status=400)
-
-        nexus_data = generator(
-            rng,
-            dataset,
-            nexus_template,
-            **{key.replace("-", "_"): val for key, val in args.items()},
-        )
-        nexus_data["hash"] = hashlib.sha256(
-            json.dumps(nexus_data, sort_keys=True).encode()
-        ).hexdigest()[:8]
-        nexus_data["args"] = args
-        nexus_data["template"] = {
-            "name": nexus_template.name,
-            "level_door_ids": [int(door_id) for door_id in nexus_template.level_doors],
-            "level_door_names": [
-                nexus_template.data["doors"][door_id]["level"]
-                for door_id in nexus_template.level_doors
-            ],
-        }
-
-        if "json" in args:
-            return Response(
-                json.dumps(nexus_data, indent=2 if args["json"] == "pretty" else None),
-                headers={
-                    "Content-Type": "application/json; charset=utf-8",
-                }
-            )
-
-        with io.BytesIO() as data_out:
-            try:
-                write_level(
-                    dataset,
-                    nexus_template,
-                    script_data,
-                    data_out,
-                    nexus_data,
-                    **{key.replace("-", "_"): val for key, val in args.items()},
-                )
-            except ValueError:
-                return Response(
-                    "invalid arguments",
-                    status=400,
-                )
-            return Response(
-                data_out.getvalue(),
-                headers={
-                    "Content-Type": "application/deflevel",
-                    "Content-Disposition": f"inline; filename=\"randomizer-{nexus_data['hash']}.dflevel\"",
-                },
-            )
-
-    app.run(host=cli_args.host, port=cli_args.port, debug=cli_args.debug)
+    randomizer = FlaskRandomizer(
+        args.dataset,
+        args.template_dir,
+        script_data,
+        old_datasets_dir=args.old_datasets,
+    )
+    randomizer.app.run(host=args.host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":

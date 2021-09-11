@@ -1,23 +1,23 @@
-#!/usr/bin/env python3
-import argparse
+"""
+Module that performs level filtering, selection, and writing the actual
+level files.
+"""
+import dataclasses
 import logging
-import itertools
 import random
 import re
-import time
-from typing import List, BinaryIO
+from typing import Any, BinaryIO, Dict, List, Set
 
 from dustmaker import DFReader, DFWriter
-from dustmaker.tile import TileSpriteSet
 from dustmaker.variable import (
     VariableArray,
     VariableString,
     VariableStruct,
 )
 
-from .dataset import DatasetManager, open_and_swap
-from .level_sets import LEVELS_STOCK, LEVELS_CMP, LEVEL_DOORS
-from .nexus_templates import DOOR_INFO
+from .dataset import DatasetManager
+from .level_sets import LEVELS_STOCK, LEVELS_CMP
+from .nexus_templates import NexusTemplate, DOOR_INFO
 
 LOGGER = logging.getLogger(__name__)
 
@@ -30,19 +30,29 @@ ATLAS_MAX_SS_TIME_DEFAULT = "3:00.000"
 RANDOMIZER_SCRIPT_NAME = "randomizer/nexus.cpp"
 
 
+@dataclasses.dataclass
 class RandomizerData:
-    def __init__(self, seed_name: str, full_seed_name: str) -> None:
-        self.seed_name = seed_name
-        self.full_seed_name = full_seed_name
-        self.levels: List[str] = []
-        self.door_sets: List[str] = []
-        self.authors: List[str] = []
-        self.level_names: List[str] = []
+    """Container class to hold all information needed to create a randomized
+    nexus outside of the nexus template.
+    """
+
+    levels: List[str]
+    doors: List[int]
+    keys: List[int]
+
+    def as_json(self) -> Dict[str, Any]:
+        """Return the dataclass as a json dict"""
+        return {
+            "levels": self.levels,
+            "doors": self.doors,
+            "keys": self.keys,
+        }
 
 
-def atlas_filter(
-    dataset,
-    nexus_template, *,
+def atlas_filter_levels(
+    dataset: DatasetManager,
+    nexus_template: NexusTemplate,  # pylint: disable=unused-argument
+    *,
     min_ss=ATLAS_MIN_SS_DEFAULT,
     max_ss=ATLAS_MAX_SS_DEFAULT,
     min_time=ATLAS_MIN_SS_TIME_DEFAULT,
@@ -59,19 +69,18 @@ def atlas_filter(
     blocked_authors: str = "",
     ss_users: str = "",
     no_ss_users: str = "",
-    min_difficulty: str = "0",
-    max_difficulty: str = "1000",
-    **extra_args,
+    **_,
 ) -> List[str]:
     """
     Return a list of candidate levels after applying the requested constraints.
     """
+
     def _parse_time_ms(tm):
-        """ Convert a time in mm:ss.MMM format into milliseconds """
-        m = re.match("(\d+):(\d+)\.(\d+)", tm)
+        """Convert a time in mm:ss.MMM format into milliseconds"""
+        m = re.match(r"(\d+):(\d+)\.(\d+)", tm)
         if m:
             return int(m.group(1)) * 60000 + int(m.group(2)) * 1000 + int(m.group(3))
-        m = re.match("(\d+)\.(\d+)", tm)
+        m = re.match(r"(\d+)\.(\d+)", tm)
         if m:
             return int(m.group(1)) * 1000 + int(m.group(2))
         try:
@@ -93,8 +102,16 @@ def atlas_filter(
     min_time_ms = _parse_time_ms(min_time)
     max_time_ms = _parse_time_ms(max_time)
 
-    required_authors_st = set(author.strip().lower() for author in required_authors.split(",") if author.strip())
-    blocked_authors_st = set(author.strip().lower() for author in blocked_authors.split(",") if author.strip())
+    required_authors_st = set(
+        author.strip().lower()
+        for author in required_authors.split(",")
+        if author.strip()
+    )
+    blocked_authors_st = set(
+        author.strip().lower()
+        for author in blocked_authors.split(",")
+        if author.strip()
+    )
 
     ss_users_list = []
     no_ss_users_list = []
@@ -110,14 +127,14 @@ def atlas_filter(
             pass
 
     community_levels = set()
-    want_trees = {
-        "Main Nexus CW": None,
-        "Main Nexus CCW": None,
-        "clunknexusdx": None,
-        "Main Nexus Backwards": None,
+    want_trees: Dict[str, Set[str]] = {
+        "Main Nexus CW": set(),
+        "Main Nexus CCW": set(),
+        "clunknexusdx": set(),
+        "Main Nexus Backwards": set(),
     }
 
-    def dfs(tree):
+    def dfs(tree: Dict[str, dict]) -> Set[str]:
         result = set()
         for level, subtree in tree.items():
             if not subtree:
@@ -167,15 +184,18 @@ def atlas_filter(
             (backwards_filter, level in want_trees["Main Nexus Backwards"]),
         )
 
-        require_props = [prop[1] for prop in props if prop[0] == 'y']
+        require_props = [prop[1] for prop in props if prop[0] == "y"]
         if require_props and not any(require_props):
             continue
-        
-        disallow_props = (prop[1] for prop in props if prop[0] == 'n')
+
+        disallow_props = (prop[1] for prop in props if prop[0] == "n")
         if any(disallow_props):
             continue
 
-        if required_authors_st and leveldata["author"].lower() not in required_authors_st:
+        if (
+            required_authors_st
+            and leveldata["author"].lower() not in required_authors_st
+        ):
             continue
 
         if leveldata["author"].lower() in blocked_authors_st:
@@ -196,15 +216,19 @@ def atlas_filter(
 def atlas_randomize(
     rng: random.Random,
     dataset: DatasetManager,
-    nexus_template, *,
+    nexus_template: NexusTemplate,
+    *,
     min_difficulty="0",
     max_difficulty="1000",
-    hide_names="",
     rand_doors="",
-    **extra_args,
-):
+    **filter_args,
+) -> RandomizerData:
+    """Create all randomizer metadata. Decides what levels to use,
+    what door types to put in front of those levels, and what key
+    type each of those levels should produce.
+    """
     ord_levels = sorted(
-        atlas_filter(dataset, nexus_template, **extra_args),
+        atlas_filter_levels(dataset, nexus_template, **filter_args),
         key=lambda level: dataset.level_ranks[level],
     )
 
@@ -217,7 +241,7 @@ def atlas_randomize(
         mx_diff = int(max_difficulty) / 1000.0
     except ValueError:
         pass
-    
+
     # Figure out what range of levels to include
     ind_start = int(round(mn_diff * len(ord_levels)))
     ind_end = int(round(mx_diff * len(ord_levels)))
@@ -246,7 +270,7 @@ def atlas_randomize(
         doors.append(nexus_template.data["doors"][door_id]["door"])
         keys.append(nexus_template.data["doors"][door_id]["key_get"])
 
-    result = ["" for _ in range(num_levels)]
+    levels = ["" for _ in range(num_levels)]
 
     # Map levels to their appropriate door difficulty first
     ord_levels.sort(key=lambda level: dataset.level_ranks.get(level, 0.0))
@@ -254,33 +278,33 @@ def atlas_randomize(
     offset = 0
     for key_type in range(4):
         door_indexes = [
-            ind for ind, door in enumerate(doors)
-            if DOOR_INFO[door][1] == key_type
+            ind for ind, door in enumerate(doors) if DOOR_INFO[door][1] == key_type
         ]
-        chunk_levels = ord_levels[offset:offset+len(door_indexes)]
+        chunk_levels = ord_levels[offset : offset + len(door_indexes)]
         offset += len(door_indexes)
 
         rng.shuffle(chunk_levels)
         for ind, level in zip(door_indexes, chunk_levels):
-            result[ind] = level
+            levels[ind] = level
 
     if rand_doors:
         pi = list(range(num_levels))
         rng.shuffle(pi)
-        result = [result[ind] for ind in pi]
+        levels = [levels[ind] for ind in pi]
         doors = [doors[ind] for ind in pi]
         keys = [keys[ind] for ind in pi]
 
-    return {
-        "levels": result,
-        "doors": doors,
-        "keys": keys,
-    }
+    return RandomizerData(
+        levels=levels,
+        doors=doors,
+        keys=keys,
+    )
 
 
-def stock_filter(
-    dataset,
-    nexus_template, *,
+def stock_filter_levels(
+    dataset: DatasetManager,  # pylint: disable=unused-argument
+    nexus_template: NexusTemplate,
+    *,
     builtin_filter: str = "y",
     stock_filter: str = "",
     forest_filter: str = "",
@@ -293,8 +317,11 @@ def stock_filter(
     old_tutorial_filter: str = "n",
     devclip_filter: str = "n",
     infini_filter: str = "n",
-    **extra_args,
+    **_,
 ) -> List[str]:
+    """
+    Return a list of candidate levels after applying the requested constraints.
+    """
     levels_builtin = {
         nexus_template.data["doors"][doorid]["level"]
         for doorid in nexus_template.level_doors
@@ -308,7 +335,7 @@ def stock_filter(
     levels_difficults = set(LEVELS_STOCK[64:72])
 
     result = []
-    for level in (levels_builtin | levels_stock):
+    for level in levels_builtin | levels_stock:
         props = (
             (builtin_filter, level in levels_builtin),
             (stock_filter, level in levels_stock),
@@ -324,11 +351,11 @@ def stock_filter(
             (infini_filter, level == "exec func ruin user"),
         )
 
-        require_props = [prop[1] for prop in props if prop[0] == 'y']
+        require_props = [prop[1] for prop in props if prop[0] == "y"]
         if require_props and not any(require_props):
             continue
-        
-        disallow_props = (prop[1] for prop in props if prop[0] == 'n')
+
+        disallow_props = (prop[1] for prop in props if prop[0] == "n")
         if any(disallow_props):
             continue
 
@@ -336,16 +363,21 @@ def stock_filter(
 
     return result
 
+
 def stock_randomize(
     rng: random.Random,
     dataset: DatasetManager,
-    nexus_template, *,
+    nexus_template: NexusTemplate,
+    *,
     rand_doors="normal",
-    hide_names="",
-    **extra_args,
+    **filter_args,
 ):
+    """Create all randomizer metadata. Decides what levels to use,
+    what door types to put in front of those levels, and what key
+    type each of those levels should produce.
+    """
     num_levels = len(nexus_template.level_doors)
-    levels = stock_filter(dataset, nexus_template, **extra_args)
+    levels = stock_filter_levels(dataset, nexus_template, **filter_args)
     rng.shuffle(levels)
     levels = levels[:num_levels]
 
@@ -370,31 +402,34 @@ def stock_randomize(
         if rand_doors == "match":
             levels = [builtin_levels[ind] for ind in pi]
 
-    return {
-        "levels": levels,
-        "doors": doors,
-        "keys": keys,
-    }
+    return RandomizerData(
+        levels=levels,
+        doors=doors,
+        keys=keys,
+    )
 
 
 def write_level(
     dataset: DatasetManager,
-    nexus_template,
+    nexus_template: NexusTemplate,
     script_data: bytes,
     fout: BinaryIO,
-    nexus_data, *,
+    nexus_data: RandomizerData,
+    *,
     hide_authors=False,
     hide_names=False,
-    **extra_args
+    **_,
 ) -> None:
+    """Combine the nexus template, randomizer script, and randomizer data into
+    a randomizer nexus level file and write that result to fout.
+    """
     with DFReader(open(nexus_template.fullpath, "rb")) as reader:
         dflevel, region_offsets = reader.read_level_ex()
         region_data = reader.read_bytes(region_offsets[-1])
 
-
-    levels = nexus_data["levels"]
-    doors = nexus_data["doors"]
-    keys = nexus_data["keys"]
+    levels = nexus_data.levels
+    doors = nexus_data.doors
+    keys = nexus_data.keys
     if len(levels) != len(nexus_template.level_doors):
         raise ValueError("unexpected number of levels")
     if len(doors) != len(nexus_template.level_doors):
@@ -445,7 +480,9 @@ def write_level(
     persist_keys.append(b"[]level_names")
     persist_vals.append(str(len(levels)).encode())
     for level in levels:
-        level_name = "???" if hide_names else dataset.levels.get(level, {}).get("name", "")
+        level_name = (
+            "???" if hide_names else dataset.levels.get(level, {}).get("name", "")
+        )
         persist_keys.append(b"")
         persist_vals.append(level_name.encode())
 
@@ -457,7 +494,9 @@ def write_level(
         0,
         script_data,
     )
-    dflevel.variables.setdefault("script_persist_data", VariableArray(VariableStruct)).insert(
+    dflevel.variables.setdefault(
+        "script_persist_data", VariableArray(VariableStruct)
+    ).insert(
         0,
         {
             "keys": persist_keys,
@@ -468,139 +507,3 @@ def write_level(
 
     with DFWriter(fout, noclose=True) as writer:
         writer.write_level_ex(dflevel, region_offsets, region_data)
-
-
-def main():
-    parser = argparse.ArgumentParser("create randomized nexus")
-    parser.add_argument(
-        "randomizer_template",
-        help="randomizer level binary file",
-    )
-    parser.add_argument(
-        "output_path",
-        help="randomizer output path",
-    )
-    parser.add_argument(
-        "--dataset",
-        default="dataset",
-        required=False,
-        help="path to dataset folder",
-    )
-    parser.add_argument(
-        "--stock",
-        action="store_const",
-        const=True,
-        default=False,
-        required=False,
-        help="use stock levels instead of Atlas levels",
-    )
-    parser.add_argument(
-        "--stock-more",
-        action="store_const",
-        const=True,
-        default=False,
-        required=False,
-        help="include new tutorials, difficults. Implies --stock",
-    )
-    parser.add_argument(
-        "--stock-all",
-        action="store_const",
-        const=True,
-        default=False,
-        required=False,
-        help="implies --stock-more and adds tutorial0 and devclip."
-    )
-    parser.add_argument(
-        "--stock-preserve-hub",
-        action="store_const",
-        const=True,
-        default=False,
-        required=False,
-        help="keep stock levels in the same hub, implies --stock",
-    )
-    parser.add_argument(
-        "--min-difficulty",
-        default=0.0,
-        required=False,
-        type=float,
-        help="minimum difficulty percentile from 0.0 to 1.0",
-    )
-    parser.add_argument(
-        "--max-difficulty",
-        default=1.0,
-        required=False,
-        type=float,
-        help="maximum difficulty percentile from 0.0 to 1.0",
-    )
-    parser.add_argument(
-        "--no-authors",
-        action="store_const",
-        const=True,
-        default=False,
-        help="Don't show level authors",
-    )
-    parser.add_argument(
-        "--cmp",
-        action="store_const",
-        const=True,
-        default=False,
-        help="Use cmp levels only",
-    )
-    parser.add_argument(
-        "--no-cmp",
-        action="store_const",
-        const=True,
-        default=False,
-        help="Don't use any CMP levels",
-    )
-    parser.add_argument(
-        "--seed",
-        default=None,
-        required=False,
-        help="randomizer seed",
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="count",
-        default=0,
-    )
-    args = parser.parse_args()
-
-    if args.stock_all:
-        args.stock_more = True
-    if args.stock_preserve_hub or args.stock_more:
-        args.stock = True
-    if args.stock_preserve_hub and args.stock_more:
-        raise ValueError("cannot use --stock-preserve-hub with --stock-more")
-    if not args.seed:
-        args.seed = time.time_ns()
-
-    log_level = logging.WARN
-    if args.verbose > 1:
-        log_level = logging.DEBUG
-    elif args.verbose:
-        log_level = logging.INFO
-    logging.basicConfig(
-        format="%(levelname)s: %(message)s",
-        level=log_level,
-    )
-
-    dataset = DatasetManager(args.dataset)
-    dataset.load_levels()
-
-    rng = random.Random(args.seed)
-    if args.stock:
-        level_set, gen_id = randomize_stock(rng, args.stock_preserve_hub, args.stock_more, args.stock_all)
-    else:
-        dataset.load_ranks()
-        level_set, gen_id = randomize_atlas(rng, dataset, args.min_difficulty, args.max_difficulty, args.cmp, args.no_cmp)
-
-    full_seed = f"{gen_id};{args.seed}"
-
-    with open_and_swap(args.output_path, "wb") as fout:
-        write_level(dataset, args.randomizer_template, fout, level_set, full_seed, args.no_authors)
-
-
-if __name__ == "__main__":
-    main()

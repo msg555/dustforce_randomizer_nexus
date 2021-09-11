@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
+"""
+Module for managing a randomizer dataset.
+"""
 import argparse
 import collections
-import contextlib
+import json
 import logging
 import os
 import re
-import tempfile
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 import urllib
 
 from dustmaker.entity import LevelDoor, CustomScoreBook
 from dustmaker.dfreader import DFReader
 from dustmaker.level import Level, LevelType
-
-import json
+from dustmaker.tile import TileSpriteSet
 import requests
 
 from .level_sets import LEVELS_CMP
 from .playerrank import compute_ranks
-from .nexus_templates import preprocess_templates
-
+from .util import open_and_swap
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,48 +29,35 @@ DEFAULT_ATLAS_ROOT = "http://atlas.dustforce.com"
 
 LevelMetaMapping = Dict[str, dict]
 SolverMapping = Dict[str, List[int]]
-RankMapping = Dict[str, float]
-
-
-@contextlib.contextmanager
-def open_and_swap(filename, mode='w+b', buffering=-1, encoding=None, newline=None):
-    fd, tmppath = tempfile.mkstemp(
-        dir=os.path.dirname(filename) or ".",
-        text='b' not in mode,
-    )
-    try:
-        fh = open(
-            fd,
-            mode=mode,
-            buffering=buffering,
-            encoding=encoding,
-            newline=newline,
-            closefd=False,
-        )
-        yield fh
-        os.rename(tmppath, filename)
-        tmppath = None
-    finally:
-        if fh is not None:
-            fh.close()
-        os.close(fd)
-        if tmppath is not None:
-            os.unlink(tmppath)
 
 
 class DatasetManager:
-    def __init__(self, dataset: str, *, dustkid_root: str = DEFAULT_DUSTKID_ROOT, atlas_root: str = DEFAULT_ATLAS_ROOT) -> None:
+    """
+    Class managing a dataset.
+    """
+
+    def __init__(
+        self,
+        dataset: str,
+        *,
+        dustkid_root: str = DEFAULT_DUSTKID_ROOT,
+        atlas_root: str = DEFAULT_ATLAS_ROOT,
+    ) -> None:
         self.dustkid_root = dustkid_root
         self.atlas_root = atlas_root
         self.dataset = dataset
         self.sess = requests.Session()
         self.solvers: SolverMapping = {}
         self.levels: LevelMetaMapping = {}
-        self.level_ranks: RankMapping = {}
-        self.player_ranks: RankMapping = {}
+        self.level_ranks: Dict[str, float] = {}
+        self.player_ranks: Dict[int, float] = {}
         self.rank_gen_time = 0
 
     def download_solvers(self, level_id: str) -> Tuple[Optional[int], List[int]]:
+        """Downloads the list of solver user IDs for the level. Returns
+        the fastest time (in milliseconds) and list of sovler IDs. If there
+        are no solvers the fastest time will be None.
+        """
         offset = 0
         count = 1024
 
@@ -93,14 +80,11 @@ class DatasetManager:
 
             scores_map = resp.json()["scores"]
 
-            non_ss = False
             for score in scores_map.values():
                 if score["score_completion"] == 5 and score["score_finesse"] == 5:
                     if fastest_time is None or score["time"] < fastest_time:
                         fastest_time = score["time"]
                     solvers.append(score["user"])
-                else:
-                    non_ss = True
 
             if len(scores_map) != count:
                 break
@@ -108,15 +92,20 @@ class DatasetManager:
 
         return fastest_time, solvers
 
-    def download_levels(self, *, prev: str = "", was_daily: Optional[bool] = None,
-                        level_types: Optional[List[LevelType]] = None) -> LevelMetaMapping:
-        """ Fetch the requested levels from dustkid. """
+    def download_levels(
+        self,
+        *,
+        prev: str = "",
+        was_daily: Optional[bool] = None,
+        level_types: Optional[List[LevelType]] = None,
+    ) -> LevelMetaMapping:
+        """Fetch the requested levels from dustkid."""
 
         query_parameters = {
-            "count": 1024,
+            "count": "1024",
         }
         if was_daily is not None:
-            query_parameters["was_daily"] = was_daily
+            query_parameters["was_daily"] = "y" if was_daily else "n"
         if level_types is not None:
             query_parameters["level_type"] = ",".join(
                 str(int(level_type)) for level_type in level_types
@@ -145,7 +134,7 @@ class DatasetManager:
         return result
 
     def load_community_levels(self, force_update: bool = False) -> None:
-        """ Find all levels accessible from the community nexus """
+        """Find all levels accessible from the community nexus"""
         community_levels_path = os.path.join(self.dataset, "community.json")
         if not force_update:
             try:
@@ -162,18 +151,28 @@ class DatasetManager:
             pass
 
         visited = {
-            "random", "_back_", "_forward_", "", "Main Nexus", "Main Nexus DX",
-            "tutorial0", "citynexus", "forestnexus", "labnexus", "mansionnexus",
-            "Single Player Nexus", "randomizer_nexus",
+            "random",
+            "_back_",
+            "_forward_",
+            "",
+            "Main Nexus",
+            "Main Nexus DX",
+            "tutorial0",
+            "citynexus",
+            "forestnexus",
+            "labnexus",
+            "mansionnexus",
+            "Single Player Nexus",
+            "randomizer_nexus",
         }
 
-        def dfs(level, visited):
+        def dfs(level: str, visited: Set[str]):
             if level in self.levels:
                 # Level IDs in our levels struct are definitely normal
                 # levels, we don't need to open them.
                 return {}
 
-            atlas_match = re.match(".*-(\d+)", level)
+            atlas_match = re.match(r".*-(\d+)", level)
             atlas_id = 0
             if atlas_match:
                 atlas_id = int(atlas_match.group(1))
@@ -231,8 +230,7 @@ class DatasetManager:
             return result if result else None
 
         self.community_levels = {
-            level: dfs(level, visited)
-            for level in ("customnexus", "Multiplayer Nexus")
+            level: dfs(level, visited) for level in ("customnexus", "Multiplayer Nexus")
         }
         with open_and_swap(community_levels_path, "w") as flevs:
             json.dump(self.community_levels, flevs)
@@ -247,7 +245,7 @@ class DatasetManager:
         LOGGER.info("Wrote levels.json dataset")
 
     def load_levels(self, force_update: bool = False) -> None:
-        """ Load level metadata into self.levels. By default this will just
+        """Load level metadata into self.levels. By default this will just
         load level metadata from disk and download it from the dustkid API if
         no local level data exists.
 
@@ -264,7 +262,9 @@ class DatasetManager:
             LOGGER.info("No existing levels.json")
 
         if force_update or not self.levels:
-            new_levels = self.download_levels(level_types=[LevelType.NORMAL, LevelType.DUSTMOD])
+            new_levels = self.download_levels(
+                level_types=[LevelType.NORMAL, LevelType.DUSTMOD]
+            )
 
             # Merge downloaded data into existing level metadata
             for level, new_leveldata in new_levels.items():
@@ -272,7 +272,8 @@ class DatasetManager:
 
             # Filter out any removed (now hidden) levels.
             self.levels = {
-                level: leveldata for level, leveldata in self.levels.items()
+                level: leveldata
+                for level, leveldata in self.levels.items()
                 if level in new_levels
             }
 
@@ -281,7 +282,7 @@ class DatasetManager:
             LOGGER.info("Wrote levels.json dataset")
 
     def download_level_files(self) -> None:
-        """ Download the level binaries for each file in the levels metadata.
+        """Download the level binaries for each file in the levels metadata.
         Only downloads level files that are missing.
         """
         try:
@@ -289,14 +290,14 @@ class DatasetManager:
         except FileExistsError:
             pass
 
-        for level, levelinfo in self.levels.items():
+        for levelinfo in self.levels.values():
             atlas_id = levelinfo["atlas_id"]
             if not atlas_id:
                 continue
             self.download_atlas_level(atlas_id)
 
     def download_atlas_level(self, atlas_id: int) -> str:
-        """ Download a singular level from Atlas by its ID. """
+        """Download a singular level from Atlas by its ID."""
         level_path = os.path.join(self.dataset, "levels", str(atlas_id))
         if os.path.exists(level_path):
             return level_path
@@ -326,8 +327,8 @@ class DatasetManager:
 
         return level_path
 
-    def download_community_level(self, level: int, force_update: bool = False) -> str:
-        """ Download a community level from Dustkid by name """
+    def download_community_level(self, level: str, force_update: bool = False) -> str:
+        """Download a community level from Dustkid by name"""
         scrubbed_name = re.sub(r"[^\w-]", "", level)
         level_path = os.path.join(self.dataset, "community_levels", scrubbed_name)
         if not force_update and os.path.exists(level_path):
@@ -364,7 +365,7 @@ class DatasetManager:
         return level_path
 
     def extend_level_metadata(self, force_update: bool = False) -> None:
-        """ Add additional metadata from the level files to the self.levels
+        """Add additional metadata from the level files to the self.levels
         mapping. This will by default only update levels that have no existing
         extended metadata. This will ignore any levels where the level has not
         been downloaded.
@@ -389,23 +390,23 @@ class DatasetManager:
                     continue
 
                 LOGGER.info("Extract level metadata for %s", level)
-                tile_sets = collections.Counter()
-                entities = collections.Counter()
+                tile_sets: Dict[TileSpriteSet, int] = collections.Counter()
+                entities: Dict[TileSpriteSet, int] = collections.Counter()
                 with DFReader(open(level_path, "rb")) as reader:
-                    level, region_offsets = reader.read_level_ex()
-                    levelinfo["virtual"] = level.virtual_character
-                    levelinfo["name"] = level.name.decode("utf-8")
+                    level_data, region_offsets = reader.read_level_ex()
+                    levelinfo["virtual"] = level_data.virtual_character
+                    levelinfo["name"] = level_data.name.decode("utf-8")
 
                     for _ in region_offsets[:-1]:
-                        level = Level()
-                        reader.read_region(level)
+                        level_data = Level()
+                        reader.read_region(level_data)
 
-                        for (layer, _, _), tile in level.tiles.items():
+                        for (layer, _, _), tile in level_data.tiles.items():
                             if layer != 19:
                                 continue
                             tile_sets[tile.sprite_set] += 1
 
-                        for _, _, entity in level.entities.values():
+                        for _, _, entity in level_data.entities.values():
                             entities[entity.etype] += 1
 
                 levelinfo["tiles"] = dict(tile_sets)
@@ -413,11 +414,13 @@ class DatasetManager:
                 updated_level_info = True
         finally:
             if updated_level_info:
-                with open_and_swap(os.path.join(self.dataset, "levels.json"), "w") as flevels:
+                with open_and_swap(
+                    os.path.join(self.dataset, "levels.json"), "w"
+                ) as flevels:
                     json.dump(self.levels, flevels)
 
     def load_solvers(self, force_update: bool = False) -> None:
-        """ Load solvers information into self.solvers. Normally this will
+        """Load solvers information into self.solvers. Normally this will
         load cached data from disk and load any additional missing levels
         from the dustkid API.
 
@@ -432,7 +435,7 @@ class DatasetManager:
                 LOGGER.info("Read solvers.json dataset")
             except FileNotFoundError:
                 LOGGER.info("No solvers.json found, initialized empty dataset")
-        
+
         updated_solvers = False
         try:
             for level_id, level_data in self.levels.items():
@@ -442,35 +445,43 @@ class DatasetManager:
                     continue
 
                 LOGGER.info("Calculating solvers for %s", level_id)
-                level_data["fastest_time"], solvers[level_id] = self.download_solvers(level_id)
+                level_data["fastest_time"], solvers[level_id] = self.download_solvers(
+                    level_id
+                )
                 updated_solvers = True
 
             orig_len = len(solvers)
             solvers = {
-                level: solvers for level, solvers in solvers.items()
+                level: solvers
+                for level, solvers in solvers.items()
                 if level in self.levels
             }
             updated_solvers = updated_solvers or len(solvers) != orig_len
         finally:
             if updated_solvers:
-                with open_and_swap(os.path.join(self.dataset, "levels.json"), "w") as flevels:
+                with open_and_swap(
+                    os.path.join(self.dataset, "levels.json"), "w"
+                ) as flevels:
                     json.dump(self.levels, flevels)
-                with open_and_swap(os.path.join(self.dataset, "solvers.json"), "w") as fsolvers:
+                with open_and_swap(
+                    os.path.join(self.dataset, "solvers.json"), "w"
+                ) as fsolvers:
                     json.dump(solvers, fsolvers)
                 LOGGER.info("Updated solvers.json")
 
         self.solvers = solvers
 
-    def load_banned_levels(self) -> List[str]:
+    def load_banned_levels(self) -> None:
+        """Load list of banned levels into self.banned_levels as a set."""
         try:
             with open(os.path.join(self.dataset, "banned_levels.json"), "r") as fbanned:
                 self.banned_levels = set(json.load(fbanned))
         except FileNotFoundError:
-            self.banned_levels = {}
+            self.banned_levels = set()
             LOGGER.info("Found no banned_levels.json file")
 
     def load_ranks(self) -> None:
-        """ Load player/level rank data from disk into self.level_ranks and
+        """Load player/level rank data from disk into self.level_ranks and
         self.player_ranks. If you want to recalculate ranks instead
         call compute_ranks.
         """
@@ -486,7 +497,7 @@ class DatasetManager:
             self.rank_gen_time = 0
 
     def compute_player_ranks(self) -> None:
-        """ Compute and save rank data and store results in self.level_ranks
+        """Compute and save rank data and store results in self.level_ranks
         and self.player_ranks.
         """
         self.level_ranks, self.player_ranks = compute_ranks(self.levels, self.solvers)
@@ -503,8 +514,8 @@ class DatasetManager:
 
 
 def main():
-    """ Update dataset CLI interface """
-    parser = argparse.ArgumentParser("update randomizer nexus dataset")
+    """Update dataset CLI interface"""
+    parser = argparse.ArgumentParser(description="update randomizer nexus dataset")
     parser.add_argument(
         "--dustkid",
         default=DEFAULT_DUSTKID_ROOT,
@@ -522,12 +533,6 @@ def main():
         default="dataset",
         required=False,
         help="path to dataset folder",
-    )
-    parser.add_argument(
-        "--templates",
-        default="nexus_templates",
-        required=False,
-        help="path to nexus templates folder",
     )
     parser.add_argument(
         "--update-levels",
@@ -579,14 +584,15 @@ def main():
         level=log_level,
     )
 
-    dataset = DatasetManager(args.dataset, dustkid_root=args.dustkid, atlas_root=args.atlas)
+    dataset = DatasetManager(
+        args.dataset, dustkid_root=args.dustkid, atlas_root=args.atlas
+    )
     dataset.load_levels(args.update_levels)
     dataset.load_community_levels(args.update_community)
     dataset.download_level_files()
     dataset.extend_level_metadata(args.update_levels_full)
     dataset.load_solvers(args.update_solvers)
     dataset.compute_player_ranks()
-    preprocess_templates(args.templates)
 
 
 if __name__ == "__main__":

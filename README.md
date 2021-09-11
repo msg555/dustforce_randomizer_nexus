@@ -37,3 +37,17 @@ be hosted and available at https://dustkid.com/randomizer.
 ```
 python -m dfrandomizer.web bin/randomizer_nexus
 ```
+
+### Add a new nexus template
+
+Copy the nexus file you want to be a template into into the nexus\_templates
+directory and preprocess with a command like:
+
+```
+python -m dfrandomizer.nexus_templates nexus_templates/mynewnexus
+```
+
+Any doors that lead to a known playable level will be randomized,
+all other doors will be converted into back nexus doors. The key get type for
+each level will always be the next higher key type than the one used to access
+that level, with the highest lock type yielding red keys.

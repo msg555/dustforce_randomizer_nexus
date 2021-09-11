@@ -1,9 +1,12 @@
-#!/usr/bin/env python3
+"""
+Module defining logic to compute player and level ranks.
+"""
 
 import logging
 import math
+from typing import Dict, List, Set, Tuple
 
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression  # type: ignore
 
 # Maps that cannot be part of the randomizer even if otherwise eligible. They
 # will also be ignored for player rank and difficulty calculations.
@@ -17,51 +20,70 @@ REGRESSION_WEIGHTING = 0.4
 LOGGER = logging.getLogger(__name__)
 
 
-def alpha_sum(A, alpha, s_init=0):
-  """
-  Compute a decaying sum as
+def alpha_sum(A: List[float], alpha: float, s_init: float = 0.0) -> float:
+    r"""
+    Compute a decaying sum as
 
-  s_init * alpha^|A| + \sum_i (1-alpha)*alpha^i * A_i
+    s_init * alpha^|A| + \sum_i (1-alpha)*alpha^i * A_i
 
-  You can consider this an infinite average where elements in the front are
-  weighted more heavily than later elements and the back of the list is filled
-  with an infinite sequence of elements of value s_init.
-  """
-  s = s_init
-  for x in A[::-1]:
-    s *= alpha
-    s += (1 - alpha) * x
-  return s
-
-
-def predict_sses(levels, solvers):
-  # Compute linear regression for expected number of SSes based on level ID and
-  # if the level was the daily.
-  dataset = ([], [])
-  for level, level_solvers in solvers.items():
-    leveldata = levels[level]
-    dataset[1 if leveldata["was_daily"] else 0].append({
-      "level": level,
-      "x": [leveldata["atlas_id"]],
-      "y": len(level_solvers),
-    })
-
-  result = {}
-  for dset in dataset:
-    x = [datum["x"] for datum in dset]
-    y = [datum["y"] for datum in dset]
-    lev = [datum["level"] for datum in dset]
-    result.update(zip(lev, LinearRegression().fit(x, y).predict(x)))
-
-  return result
+    You can consider this an infinite average where elements in the front are
+    weighted more heavily than later elements and the back of the list is filled
+    with an infinite sequence of elements of value s_init.
+    """
+    s = s_init
+    for x in A[::-1]:
+        s *= alpha
+        s += (1 - alpha) * x
+    return s
 
 
-def compute_ranks(levels, solvers):
+def predict_sses(
+    levels: Dict[str, dict], solvers: Dict[str, List[int]]
+) -> Dict[str, float]:
+    """Compute linear regression for expected number of SSes based on
+    level ID and if the level was the daily.
+    """
+    dataset: Tuple[List[dict], List[dict]] = ([], [])
+    for level, level_solvers in solvers.items():
+        leveldata = levels[level]
+        dataset[1 if leveldata["was_daily"] else 0].append(
+            {
+                "level": level,
+                "x": [leveldata["atlas_id"]],
+                "y": len(level_solvers),
+            }
+        )
+
+    result: Dict[str, float] = {}
+    for dset in dataset:
+        x = [datum["x"] for datum in dset]
+        y = [datum["y"] for datum in dset]
+        lev = [datum["level"] for datum in dset]
+        result.update(zip(lev, LinearRegression().fit(x, y).predict(x)))
+
+    return result
+
+
+def compute_ranks(
+    levels: Dict[str, dict],
+    solvers: Dict[str, List[int]],
+) -> Tuple[Dict[str, float], Dict[int, float]]:
+    """Calculate and return a tuple of two mappings using an iterative
+    method.  The first maps level IDs to difficulties (between 0.0 and 1.0)
+    The second maps player IDs to a skill (between 0.0 and 1.0).
+
+    Formulas are setup so that:
+
+    1. A player solving more levels should increase their skill
+    2. A level being solved by more players should decrease its difficulty
+    3. A players skill should be affected most by the most difficulty levels they solve
+    4. A level's difficulty should be affected most by the lowest skilled player to solve it
+    """
     expected_level_sses = predict_sses(levels, solvers)
 
     # Filter out maps and compute inverse mapping from players to levels.
-    player_map = {}
-    level_set = set()
+    player_map: Dict[int, List[str]] = {}
+    level_set: Set[str] = set()
     for level, players in solvers.items():
         level_set.add(level)
         for player in players:
@@ -77,13 +99,9 @@ def compute_ranks(levels, solvers):
 
     # Initialize level difficulties and player ranks to 0.5. The algorithm is such
     # that rankings can be between 0 and 1 as the algorithm continues.
-    level_score = {
-        level: naive_difficulty(level) for level in level_set
-    }
+    level_score = {level: naive_difficulty(level) for level in level_set}
 
-    player_score = {
-        player: 0.5 for player in player_map
-    }
+    player_score = {player: 0.5 for player in player_map}
 
     # Iterate the calculations until they converge.
     while True:
@@ -96,8 +114,10 @@ def compute_ranks(levels, solvers):
             scores = sorted(player_score[player] for player in players)
             base_score = alpha_sum(scores, LEVEL_ALPHA, s_init=1)
             new_level_score[level] = math.pow(
-                naive_difficulty(level),
-                REGRESSION_WEIGHTING) * math.pow(base_score, 1.0 - REGRESSION_WEIGHTING,
+                naive_difficulty(level), REGRESSION_WEIGHTING
+            ) * math.pow(
+                base_score,
+                1.0 - REGRESSION_WEIGHTING,
             )
 
         # Compute new player rankings based on the previous level difficulties.
