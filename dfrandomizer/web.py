@@ -189,8 +189,8 @@ def main():
     def update_datasets_view():
         nonlocal last_update_time
         nonlocal default_dataset
-        if time.time() - last_update_time < 60:
-            default_dataset = update_dataset()
+        if time.time() - last_update_time > 60:
+            default_dataset = update_datasets()
             last_update_time = time.time()
             return "updated"
         return "sleepy"

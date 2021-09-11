@@ -17,6 +17,7 @@ from dustmaker.level import Level, LevelType
 import json
 import requests
 
+from .level_sets import LEVELS_CMP
 from .playerrank import compute_ranks
 from .nexus_templates import preprocess_templates
 
@@ -120,8 +121,6 @@ class DatasetManager:
             query_parameters["level_type"] = ",".join(
                 str(int(level_type)) for level_type in level_types
             )
-
-        print(query_parameters)
 
         result = {}
         while True:
@@ -237,6 +236,14 @@ class DatasetManager:
         }
         with open_and_swap(community_levels_path, "w") as flevs:
             json.dump(self.community_levels, flevs)
+        LOGGER.info("Wrote community.json dataset")
+
+        # Add in any missed CMP levels
+        for level in LEVELS_CMP:
+            dfs(level, visited)
+
+        with open_and_swap(os.path.join(self.dataset, "levels.json"), "w") as flevels:
+            json.dump(self.levels, flevels)
         LOGGER.info("Wrote levels.json dataset")
 
     def load_levels(self, force_update: bool = False) -> None:
