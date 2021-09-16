@@ -1,3 +1,15 @@
+<script type='text/javascript'>
+function update_template(obj) {
+  if (obj.value == "linear") {
+    $(".linear-template-config").show();
+  } else {
+    $(".linear-template-config").hide();
+  }
+}
+$(document).ready(function() {
+  update_template(document.getElementById("nexus-template"));
+});
+</script>
 <h1 align='center'>Stock Randomizer</h1>
 <form method='POST' action='generate-link'>
 <input type='hidden' name='type' value='stock'/>
@@ -11,13 +23,21 @@
   <div class='form-group col-6'>
     <label title='Nexus template used to create the randomizer'>
       Template:
-      <select class='form-control' name='nexus-template'>
+      <select id='nexus-template' class='form-control' name='nexus-template' oninput='update_template(this)'>
 {%- for template_name, nexus_template in nexus_templates.items() %}
         <option value='{{ template_name }}'>
-            {{ template_name }} ({{ nexus_template.level_doors | length }} levels)
+            {{ nexus_template.display_label() }}
         </option>
 {%- endfor %}
       </select>
+    </label>
+  </div>
+</div>
+<div class='row linear-template-config' style='display: none'>
+  <div class='form-group col-6'>
+    <label title='Number of levels to use in the nexus'>
+      Number of Levels:
+      <input type='text' class='form-control' name='num-levels'></input>
     </label>
   </div>
 </div>

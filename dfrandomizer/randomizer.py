@@ -8,7 +8,6 @@ import random
 import re
 from typing import Any, BinaryIO, Dict, List, Set
 
-from dustmaker import DFReader, DFWriter
 from dustmaker.variable import (
     VariableArray,
     VariableString,
@@ -17,7 +16,7 @@ from dustmaker.variable import (
 
 from .dataset import DatasetManager
 from .level_sets import LEVELS_STOCK, LEVELS_CMP
-from .nexus_templates import NexusTemplate, DOOR_INFO
+from .nexus_templates import LinearNexusTemplate, NexusTemplate, DOOR_INFO
 
 LOGGER = logging.getLogger(__name__)
 
@@ -322,10 +321,13 @@ def stock_filter_levels(
     """
     Return a list of candidate levels after applying the requested constraints.
     """
-    levels_builtin = {
-        nexus_template.data["doors"][doorid]["level"]
-        for doorid in nexus_template.level_doors
-    }
+    if isinstance(nexus_template, LinearNexusTemplate):
+        levels_builtin = set()
+    else:
+        levels_builtin = {
+            nexus_template.data["doors"][doorid]["level"]
+            for doorid in nexus_template.level_doors
+        }
     levels_stock = set(LEVELS_STOCK)
     levels_forest = set(LEVELS_STOCK[0:16])
     levels_mansion = set(LEVELS_STOCK[16:32])
@@ -423,9 +425,7 @@ def write_level(
     """Combine the nexus template, randomizer script, and randomizer data into
     a randomizer nexus level file and write that result to fout.
     """
-    with DFReader(open(nexus_template.fullpath, "rb")) as reader:
-        dflevel, region_offsets = reader.read_level_ex()
-        region_data = reader.read_bytes(region_offsets[-1])
+    dflevel, dflevel_data = nexus_template.read()
 
     levels = nexus_data.levels
     doors = nexus_data.doors
@@ -458,11 +458,15 @@ def write_level(
             {
                 "door_id": door_id,
                 "level": "_back_",
+                "required": "false",
             }
         )
 
     persist_keys = VariableArray(VariableString)
     persist_vals = VariableArray(VariableString)
+
+    persist_keys.append(b"spawn_reward")
+    persist_vals.append(b"true")
 
     persist_keys.append(b"[]levels")
     persist_vals.append(str(len(level_infos)).encode())
@@ -475,15 +479,15 @@ def write_level(
             persist_keys.append(key.encode())
             persist_vals.append(str(val).encode())
 
-    dflevel.variables.setdefault("scriptNames", VariableArray(VariableString)).insert(
+    dflevel.variables.setdefault("scriptNames", VariableArray(VariableString)).insert(  # type: ignore
         0,
         RANDOMIZER_SCRIPT_NAME.encode(),
     )
-    dflevel.variables.setdefault("scripts", VariableArray(VariableString)).insert(
+    dflevel.variables.setdefault("scripts", VariableArray(VariableString)).insert(  # type: ignore
         0,
         script_data,
     )
-    dflevel.variables.setdefault(
+    dflevel.variables.setdefault(  # type: ignore
         "script_persist_data", VariableArray(VariableStruct)
     ).insert(
         0,
@@ -494,5 +498,4 @@ def write_level(
         },
     )
 
-    with DFWriter(fout, noclose=True) as writer:
-        writer.write_level_ex(dflevel, region_offsets, region_data)
+    nexus_template.write(fout, dflevel, dflevel_data)

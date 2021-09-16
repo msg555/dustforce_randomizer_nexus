@@ -3,6 +3,7 @@ const string DOOR_ENTITY = "level_door";
 class level_info {
   level_info() {
     key_get = 4;
+    required = true;
   }
 
   [entity,label:'Door',tooltip:'Door ID'] int door_id;
@@ -16,6 +17,7 @@ class level_info {
   [hidden] string level;
   [hidden] int door_sprite;
   [hidden] string display_name;
+  [hidden] bool required;
 }
 
 class script {
@@ -27,6 +29,7 @@ class script {
   array<int> added_entities;
 
   [label:'Levels'] array<level_info> levels;
+  [check] bool spawn_reward;
 
   script() {
     first_frame = true;
@@ -46,6 +49,7 @@ class script {
   }
 
   void fixup_scores() {
+    bool all_complete = true;
     for (uint i = 0; i < levels.size(); i++) {
       level_info@ info = @levels[i];
 
@@ -54,6 +58,10 @@ class script {
       float time;
       int key_type;
       if (n.score_lookup(info.level, thorough, finesse, time, key_type)) {
+        if (info.required && (thorough != 5 || finesse != 5)) {
+          all_complete = false;
+        }
+
         int expected_key_type = info.key_get;
         if (expected_key_type == 0) {
           expected_key_type = 4;
@@ -63,6 +71,20 @@ class script {
 
         if (key_type != expected_key_type) {
           n.score_set(info.level, thorough, finesse, time, expected_key_type);
+        }
+      } else if (info.required) {
+        all_complete = false;
+      }
+    }
+    if (all_complete && spawn_reward) {
+      spawn_reward = false;
+      for (int i = num_cameras() - 1; i >= 0; i--) {
+        entity@ player_e = @controller_entity(i);
+        if (@player_e != null) {
+          entity@ reward = create_entity("hittable_apple");
+          reward.x(player_e.x());
+          reward.y(player_e.y());
+          g.add_entity(@reward);
         }
       }
     }

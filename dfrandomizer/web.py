@@ -47,6 +47,7 @@ DEFAULT_ARGS = {
         "hide-authors": "",
         "hide-names": "",
         "rand-doors": "",
+        "num-levels": "",
     },
     "stock": {
         "builtin-filter": "y",
@@ -63,6 +64,7 @@ DEFAULT_ARGS = {
         "infini-filter": "n",
         "rand-doors": "normal",
         "hide-names": "",
+        "num-levels": "",
     },
 }
 
@@ -75,6 +77,28 @@ GENERATORS = {
     "atlas": atlas_randomize,
     "stock": stock_randomize,
 }
+
+
+def handle_error(func):
+    """
+    Decorator to turn ValueErrors into 400s and other errors into 500s.
+    """
+
+    def invoke(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ValueError as exc:
+            return Response(
+                f"value error: {exc}",
+                status=400,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            return Response(
+                f"unexpected error: {exc}",
+                status=500,
+            )
+
+    return invoke
 
 
 class FlaskRandomizer:
@@ -163,6 +187,7 @@ class FlaskRandomizer:
             return "updated"
         return "sleepy"
 
+    @handle_error
     def generate_link_view(self):
         """Verify and report the number of available levels and yield a
         permanent link if there are enough to create a randomizer.
@@ -195,6 +220,10 @@ class FlaskRandomizer:
             val = args.get(key, default_val)
             if val != default_val:
                 new_args[key] = val
+
+        nexus_template = nexus_template.config(
+            **{key.replace("-", "_"): val for key, val in new_args.items()},
+        )
 
         levels = LEVEL_FILTERS[args["type"]](
             dataset,
@@ -250,6 +279,10 @@ class FlaskRandomizer:
         generator = GENERATORS.get(args.get("type", ""))
         if generator is None:
             return Response("invalid generation type", status=400)
+
+        nexus_template = nexus_template.config(
+            **{key.replace("-", "_"): val for key, val in args.items()},
+        )
 
         nexus_data = generator(
             rng,
