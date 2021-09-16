@@ -27,7 +27,7 @@ ATLAS_MAX_SS_DEFAULT = "-1"
 ATLAS_MIN_SS_TIME_DEFAULT = ""
 ATLAS_MAX_SS_TIME_DEFAULT = "3:00.000"
 
-RANDOMIZER_SCRIPT_NAME = "randomizer/nexus.cpp"
+RANDOMIZER_SCRIPT_NAME = "nexus_controller.cpp"
 
 
 @dataclasses.dataclass
@@ -437,54 +437,43 @@ def write_level(
     if len(keys) != len(nexus_template.level_doors):
         raise ValueError("unexpected number of keys")
 
-    door_ids = nexus_template.level_doors + nexus_template.other_doors
+    level_infos = []
+    for door_id, level, door_sprite, key_get in zip(
+        nexus_template.level_doors, levels, doors, keys
+    ):
+        level_data = dataset.levels.get(level, {})
+        level_info = {
+            "door_id": door_id,
+            "key_get": key_get,
+            "level": level,
+            "door_sprite": door_sprite,
+            "display_name": "???" if hide_names else level_data.get("name", ""),
+        }
+        if not hide_authors:
+            level_info["author"] = level_data.get("author", "")
+        level_infos.append(level_info)
+
     for door_id in nexus_template.other_doors:
-        levels.append("_back_")
-        doors.append(nexus_template.data["doors"][door_id]["door"])
-        keys.append(0)
+        level_infos.append(
+            {
+                "door_id": door_id,
+                "level": "_back_",
+            }
+        )
 
     persist_keys = VariableArray(VariableString)
     persist_vals = VariableArray(VariableString)
 
-    persist_keys.append(b"[]door_ids")
-    persist_vals.append(str(len(door_ids)).encode())
-    for door_id in door_ids:
-        persist_keys.append(b"")
-        persist_vals.append(str(door_id).encode())
+    persist_keys.append(b"[]levels")
+    persist_vals.append(str(len(level_infos)).encode())
 
-    persist_keys.append(b"[]door_sets")
-    persist_vals.append(str(len(doors)).encode())
-    for door_set in doors:
-        persist_keys.append(b"")
-        persist_vals.append(str(door_set).encode())
+    for level_info in level_infos:
+        persist_keys.append(b"{}")
+        persist_vals.append(str(len(level_info)).encode())
 
-    persist_keys.append(b"[]keys")
-    persist_vals.append(str(len(keys)).encode())
-    for key_get in keys:
-        persist_keys.append(b"")
-        persist_vals.append(str(key_get).encode())
-
-    persist_keys.append(b"[]level_mapping")
-    persist_vals.append(str(len(levels)).encode())
-    for level in levels:
-        persist_keys.append(b"")
-        persist_vals.append(level.encode())
-
-    persist_keys.append(b"[]authors")
-    persist_vals.append(str(len(levels)).encode())
-    for level in levels:
-        persist_keys.append(b"")
-        author = "" if hide_authors else dataset.levels.get(level, {}).get("author", "")
-        persist_vals.append(author.encode())
-
-    persist_keys.append(b"[]level_names")
-    persist_vals.append(str(len(levels)).encode())
-    for level in levels:
-        level_name = (
-            "???" if hide_names else dataset.levels.get(level, {}).get("name", "")
-        )
-        persist_keys.append(b"")
-        persist_vals.append(level_name.encode())
+        for key, val in level_info.items():
+            persist_keys.append(key.encode())
+            persist_vals.append(str(val).encode())
 
     dflevel.variables.setdefault("scriptNames", VariableArray(VariableString)).insert(
         0,

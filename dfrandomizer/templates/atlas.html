@@ -28,10 +28,10 @@ function update_difficulty(obj) {
     <label title='Nexus template used to create the randomizer'>
       Template:
       <select class='form-control' name='nexus-template'>
-{%- for template_name in nexus_templates %}
-        <option value='{{ template_name }}'
-{%- if template_name == "nexusdx" %} selected {% endif -%}
-            >{{ template_name }}</option>
+{%- for template_name, nexus_template in nexus_templates.items() %}
+        <option value='{{ template_name }}'>
+            {{ template_name }} ({{ nexus_template.level_doors | length }} levels)
+        </option>
 {%- endfor %}
       </select>
     </label>

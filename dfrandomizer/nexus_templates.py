@@ -51,6 +51,15 @@ DOOR_INFO = (
     (TileSpriteSet.FOREST, 1),  # 26
 )
 
+TEMPLATE_PREFERRED_ORDER = (
+    "nexusdx",
+    "forestnexus",
+    "mansionnexus",
+    "citynexus",
+    "labnexus",
+    "virtualnexus",
+)
+
 
 class NexusTemplate:
     """
@@ -99,12 +108,26 @@ def load_template(
 
 def load_all_templates(dataset, template_dir: str) -> Dict[str, NexusTemplate]:
     """Load all templates into a dictionary within the given template directory"""
-    result = {}
-    for template_name in os.listdir(template_dir):
-        if template_name.endswith(".json"):
-            continue
-        result[template_name] = load_template(dataset, template_dir, template_name)
-    return result
+    template_set = {
+        template_name
+        for template_name in os.listdir(template_dir)
+        if not template_name.endswith(".json")
+    }
+
+    template_ord = []
+    for template_name in TEMPLATE_PREFERRED_ORDER:
+        try:
+            template_set.remove(template_name)
+        except KeyError:
+            pass
+        else:
+            template_ord.append(template_name)
+    template_ord.extend(sorted(template_set))
+
+    return {
+        template_name: load_template(dataset, template_dir, template_name)
+        for template_name in template_ord
+    }
 
 
 def preprocess_template(template_file: str) -> None:
