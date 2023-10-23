@@ -1,7 +1,7 @@
 dustmaker~=1.0
 flask~=2.0
 requests~=2.26
-sklearn
+scikit-learn ~= 1.3
 
 pylint~=2.9.6
 mypy~=0.910
